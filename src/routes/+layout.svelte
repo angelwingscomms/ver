@@ -12,10 +12,10 @@
 	:global(html, body) {
 		margin: 0;
 		padding: 0;
-		background: #f6f1e9;
-		color: #2b2622;
+		background: #f3f6fb;
+		color: #16233f;
 		font-family:
-			'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+			system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		-webkit-font-smoothing: antialiased;
 		text-rendering: optimizeLegibility;
 	}
@@ -23,7 +23,7 @@
 		box-sizing: border-box;
 	}
 	:global(a) {
-		color: #9a6a4f;
+		color: #1d4ed8;
 	}
 </style>
 

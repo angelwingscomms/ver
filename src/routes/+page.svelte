@@ -111,7 +111,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.22em;
 		font-size: 0.7rem;
-		color: #a9744f;
+		color: #1e40af;
 		margin: 0 0 0.6rem;
 		font-family:
 			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -121,12 +121,12 @@
 		font-weight: 600;
 		margin: 0;
 		letter-spacing: -0.01em;
-		color: #2b2622;
+		color: #16233f;
 	}
 	.lede {
 		margin: 0.75rem auto 0;
 		max-width: 30rem;
-		color: #756a5e;
+		color: #475569;
 		font-size: 1.05rem;
 		line-height: 1.5;
 	}
@@ -135,11 +135,11 @@
 		display: grid;
 		grid-template-columns: 1fr auto auto auto;
 		gap: 0.6rem;
-		background: #fffdf9;
+		background: #ffffff;
 		padding: 0.7rem;
-		border: 1px solid #e7ddcd;
+		border: 1px solid #dbe3f0;
 		border-radius: 14px;
-		box-shadow: 0 1px 2px rgba(43, 38, 34, 0.04), 0 12px 30px -18px rgba(43, 38, 34, 0.25);
+		box-shadow: 0 1px 2px rgba(22, 35, 63, 0.04), 0 12px 30px -18px rgba(22, 35, 63, 0.25);
 	}
 	.field {
 		min-width: 0;
@@ -156,9 +156,9 @@
 		font-size: 1rem;
 		font-family:
 			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-		color: #2b2622;
-		background: #fbf7f0;
-		border: 1px solid #e7ddcd;
+		color: #16233f;
+		background: #f4f7fc;
+		border: 1px solid #dbe3f0;
 		border-radius: 9px;
 		transition:
 			border-color 0.15s ease,
@@ -166,14 +166,14 @@
 			background 0.15s ease;
 	}
 	input::placeholder {
-		color: #b3a896;
+		color: #9aa6bb;
 	}
 	input:focus,
 	select:focus {
 		outline: none;
 		background: #fff;
-		border-color: #c9a884;
-		box-shadow: 0 0 0 3px rgba(169, 116, 79, 0.15);
+		border-color: #2563eb;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 	}
 	.field.c input {
 		width: 5rem;
@@ -191,7 +191,7 @@
 		font-family:
 			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 		color: #fff;
-		background: #9a6a4f;
+		background: #1d4ed8;
 		border: none;
 		border-radius: 9px;
 		cursor: pointer;
@@ -200,7 +200,7 @@
 			transform 0.05s ease;
 	}
 	button:hover:not(:disabled) {
-		background: #875c44;
+		background: #1e40af;
 	}
 	button:active:not(:disabled) {
 		transform: translateY(1px);
@@ -212,12 +212,12 @@
 
 	.msg {
 		text-align: center;
-		color: #9a6a4f;
+		color: #1d4ed8;
 		margin: 1.6rem 0 0;
 		font-size: 0.98rem;
 	}
 	.msg.muted {
-		color: #b3a896;
+		color: #94a3b8;
 	}
 
 	.results {
@@ -227,8 +227,8 @@
 		gap: 0.9rem;
 	}
 	article {
-		background: #fffdf9;
-		border: 1px solid #ece2d2;
+		background: #ffffff;
+		border: 1px solid #e4e9f2;
 		border-radius: 12px;
 		padding: 1.1rem 1.25rem;
 		transition:
@@ -237,8 +237,8 @@
 			transform 0.18s ease;
 	}
 	article:hover {
-		border-color: #d9c4a8;
-		box-shadow: 0 10px 26px -20px rgba(43, 38, 34, 0.5);
+		border-color: #c3d0ea;
+		box-shadow: 0 10px 26px -20px rgba(22, 35, 63, 0.45);
 		transform: translateY(-1px);
 	}
 	header {
@@ -254,18 +254,18 @@
 		font-weight: 600;
 		font-size: 0.92rem;
 		letter-spacing: 0.01em;
-		color: #9a6a4f;
+		color: #1e40af;
 	}
 	.ch {
-		color: #b58a6a;
+		color: #3b82f6;
 		font-weight: 600;
 	}
 	.score {
 		font-family:
 			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 		font-size: 0.72rem;
-		color: #b3a896;
-		background: #f3ebdd;
+		color: #94a3b8;
+		background: #e8eefb;
 		border-radius: 999px;
 		padding: 0.15rem 0.55rem;
 		white-space: nowrap;
@@ -275,7 +275,7 @@
 		white-space: pre-wrap;
 		line-height: 1.65;
 		font-size: 1.05rem;
-		color: #38312b;
+		color: #1e293b;
 	}
 
 	footer {
@@ -285,7 +285,7 @@
 			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 		font-size: 0.78rem;
 		letter-spacing: 0.03em;
-		color: #b3a896;
+		color: #94a3b8;
 	}
 
 	@media (max-width: 620px) {
