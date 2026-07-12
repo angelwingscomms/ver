@@ -81,13 +81,16 @@
 
 	<section class="results">
 		{#each r as hit}
-			<article>
-				<header>
+			<details class="hit">
+				<summary>
 					<span class="ref">{hit.b} <span class="ch">{hit.c}</span></span>
-					<span class="score">{hit.s.toFixed(3)}</span>
-				</header>
+					<span class="right">
+						<span class="score">{hit.s.toFixed(3)}</span>
+						<span class="chev"></span>
+					</span>
+				</summary>
 				<p class="text">{hit.t}</p>
-			</article>
+			</details>
 		{/each}
 	</section>
 
@@ -226,27 +229,52 @@
 		flex-direction: column;
 		gap: 0.9rem;
 	}
-	article {
+	.hit {
 		background: #ffffff;
 		border: 1px solid #e4e9f2;
 		border-radius: 12px;
-		padding: 1.1rem 1.25rem;
+		overflow: hidden;
 		transition:
 			box-shadow 0.18s ease,
-			border-color 0.18s ease,
-			transform 0.18s ease;
+			border-color 0.18s ease;
 	}
-	article:hover {
+	.hit[open] {
 		border-color: #c3d0ea;
 		box-shadow: 0 10px 26px -20px rgba(22, 35, 63, 0.45);
-		transform: translateY(-1px);
 	}
-	header {
+	.hit summary {
+		list-style: none;
+		cursor: pointer;
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		margin-bottom: 0.55rem;
+		padding: 1.1rem 1.25rem;
+	}
+	.hit summary::-webkit-details-marker {
+		display: none;
+	}
+	.hit summary:focus-visible {
+		outline: 2px solid #2563eb;
+		outline-offset: -2px;
+		border-radius: 12px;
+	}
+	.right {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+	}
+	.chev {
+		width: 0.5rem;
+		height: 0.5rem;
+		border-right: 2px solid #94a3b8;
+		border-bottom: 2px solid #94a3b8;
+		transform: rotate(45deg);
+		transition: transform 0.2s ease;
+		flex: none;
+	}
+	.hit[open] .chev {
+		transform: rotate(-135deg);
 	}
 	.ref {
 		font-family:
@@ -272,6 +300,7 @@
 	}
 	.text {
 		margin: 0;
+		padding: 0 1.25rem 1.1rem;
 		white-space: pre-wrap;
 		line-height: 1.65;
 		font-size: 1.05rem;
