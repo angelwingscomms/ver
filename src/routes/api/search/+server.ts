@@ -5,15 +5,17 @@ import type { RequestHandler } from './$types';
 
 const COL = 'bible';
 let q: QdrantClient | null = null;
-function client() {
-	if (!q) q = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_KEY, checkCompatibility: false });
+async function client() {
+	const url = await env.QDRANT_URL.get();
+	const key = await env.QDRANT_KEY.get();
+	if (!q) q = new QdrantClient({ url, apiKey: key, checkCompatibility: false });
 	return q;
 }
 
 async function embed(text: string): Promise<number[]> {
 	const r = await fetch('https://openrouter.ai/api/v1/embeddings', {
 		method: 'POST',
-		headers: { Authorization: `Bearer ${env.OPENROUTER_KEY}`, 'Content-Type': 'application/json' },
+		headers: { Authorization: `Bearer ${await env.OPENROUTER_KEY.get()}`, 'Content-Type': 'application/json' },
 		body: JSON.stringify({ model: 'qwen/qwen3-embedding-8b', input: text })
 	});
 	if (!r.ok) {
@@ -31,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const f = { must: [] as any[] };
 	if (b) f.must.push({ key: 'b', match: { value: b } });
 	if (typeof c === 'number') f.must.push({ key: 'c', match: { value: c } });
-	const hits = await client().search(COL, { vector: v, limit: 10, filter: f.must.length ? f : undefined });
+	const hits = await (await client()).search(COL, { vector: v, limit: 10, filter: f.must.length ? f : undefined });
 	const r = hits.map((h) => ({
 		b: h.payload?.b,
 		c: h.payload?.c,
