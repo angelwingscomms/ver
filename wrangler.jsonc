@@ -9,9 +9,29 @@
 		"directory": ".svelte-kit/cloudflare"
 	},
 	"secrets_store_secrets": [
-		{ "binding": "QDRANT_URL", "store_id": "45748cb1c67946df943075fa14cb8815", "secret_name": "QDRANT_URL" },
-		{ "binding": "QDRANT_KEY", "store_id": "45748cb1c67946df943075fa14cb8815", "secret_name": "QDRANT_KEY" },
-		{ "binding": "OPENROUTER_KEY", "store_id": "45748cb1c67946df943075fa14cb8815", "secret_name": "OPENROUTER_KEY" }
+		{
+			"binding": "QDRANT_URL",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "QDRANT_URL"
+		},
+		{
+			"binding": "QDRANT_KEY",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "QDRANT_KEY"
+		},
+		{
+			"binding": "OPENROUTER_KEY",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "OPENROUTER_KEY"
+		}
+	],
+	"workflows": [
+		{
+			"name": "deepresearch",
+			"binding": "DEEPRESEARCH_WF",
+			"class_name": "DeepResearchWorkflow",
+			"script_name": "ver-workflows"
+		}
 	],
 	"workers_dev": true,
 	"preview_urls": true,
