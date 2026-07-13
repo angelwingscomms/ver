@@ -9,3 +9,6 @@
 
 ## Env
 - QDRANT_URL, QDRANT_KEY, OPENROUTER_KEY from ~/i/e4/.env
+
+## Build / Deploy (Cloudflare Workers Builds)
+- Build command: `pnpm build` → `vite build` (no `wrangler types` in the build script). See global AGENTS.md rule: never put `wrangler types` in a SvelteKit Cloudflare project's `build` script — it breaks builds in CI.
