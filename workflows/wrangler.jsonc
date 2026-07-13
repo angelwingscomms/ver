@@ -7,11 +7,24 @@
 	"workflows": [
 		{ "name": "deepresearch", "binding": "DEEPRESEARCH_WF", "class_name": "DeepResearchWorkflow" }
 	],
+	"durable_objects": {
+		"bindings": [
+			{ "name": "DR_LOG", "class_name": "DrLog" },
+			{ "name": "DR_INDEX", "class_name": "DrIndex" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["DrLog"] },
+		{ "tag": "v2", "new_sqlite_classes": ["DrIndex"] }
+	],
 	"secrets_store_secrets": [
 		{
 			"binding": "OPENROUTER_KEY",
 			"store_id": "45748cb1c67946df943075fa14cb8815",
 			"secret_name": "OPENROUTER_KEY"
 		}
-	]
+	],
+	"vars": {
+		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4"
+	}
 }

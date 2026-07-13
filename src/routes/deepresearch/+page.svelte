@@ -1,81 +1,46 @@
 <script lang="ts">
-	import { marked } from 'marked';
-	import { slug } from '$lib/deepresearch/core';
+	import { goto } from '$app/navigation';
 
-	type O = { q: string; m: string };
+	type R = { i: string; q: string; l: string; c: number; s: string };
+	let items = $state<R[]>([]);
 	let q = $state('');
-	let i = $state('');
-	let s = $state('');
-	let o = $state<O | null>(null);
-	let msg = $state('');
 	let starting = $state(false);
+	let msg = $state('');
 	let timer: ReturnType<typeof setInterval> | undefined;
 
-	if (typeof localStorage !== 'undefined') {
-		const saved = localStorage.getItem('dr');
-		if (saved) {
-			const p = JSON.parse(saved);
-			q = p.q ?? '';
-			i = p.i ?? '';
-		}
-	}
-
-	async function poll() {
-		if (!i) return;
+	async function load() {
 		try {
-			const res = await fetch(`/api/deepresearch/${i}`);
-			if (!res.ok) {
-				stop_poll();
-				msg =
-					res.status === 404 ? 'research not found (it may have expired)' : 'status check failed';
-				return;
-			}
-			const d = (await res.json()) as { s: string; o: O | null; e: unknown };
-			s = d.s;
-			if (d.s === 'complete') {
-				o = d.o;
-				stop_poll();
-			} else if (d.s === 'errored' || d.s === 'terminated') {
-				msg = `research ${d.s}${d.e ? `: ${JSON.stringify(d.e)}` : ''}`;
-				stop_poll();
-			}
+			const r = await fetch('/api/deepresearch');
+			if (r.ok) items = ((await r.json()) as { r: R[] }).r;
 		} catch {
-			/* transient network error: keep polling */
+			/* keep last list */
 		}
-	}
-
-	function stop_poll() {
-		if (timer) clearInterval(timer);
-		timer = undefined;
 	}
 
 	$effect(() => {
-		if (i && !o) {
-			poll();
-			timer = setInterval(poll, 5000);
-		}
-		return stop_poll;
+		load();
+		timer = setInterval(load, 5000);
+		return () => {
+			if (timer) clearInterval(timer);
+		};
 	});
 
 	async function start() {
 		if (!q.trim() || starting) return;
 		starting = true;
 		msg = '';
-		o = null;
-		s = '';
 		try {
-			const res = await fetch('/api/deepresearch', {
+			const r = await fetch('/api/deepresearch', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ q })
+				body: JSON.stringify({ q: q.trim() })
 			});
-			const d = (await res.json()) as { i?: string; message?: string };
-			if (!res.ok || !d.i) {
+			const d = (await r.json()) as { i?: string; l?: string; message?: string };
+			if (!r.ok || !d.i) {
 				msg = d.message ?? 'failed to start';
 				return;
 			}
-			i = d.i;
-			localStorage.setItem('dr', JSON.stringify({ q, i }));
+			goto(`/deepresearch/${d.i}?l=${encodeURIComponent(d.l ?? '')}&q=${encodeURIComponent(q.trim())}`);
 		} catch {
 			msg = 'failed to start';
 		} finally {
@@ -83,23 +48,16 @@
 		}
 	}
 
-	function download() {
-		if (!o) return;
-		const a = document.createElement('a');
-		a.href = URL.createObjectURL(new Blob([o.m], { type: 'text/markdown' }));
-		a.download = `${slug(o.q)}.md`;
-		a.click();
-		URL.revokeObjectURL(a.href);
+	function ago(c: number): string {
+		const s = Math.floor((Date.now() - c) / 1000);
+		if (s < 60) return `${s}s ago`;
+		if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+		if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+		return `${Math.floor(s / 86400)}d ago`;
 	}
 
-	function reset() {
-		stop_poll();
-		q = '';
-		i = '';
-		s = '';
-		o = null;
-		msg = '';
-		localStorage.removeItem('dr');
+	function badge(s: string): string {
+		return s === 'complete' ? 'done' : s === 'errored' || s === 'terminated' ? 'err' : 'run';
 	}
 </script>
 
@@ -116,45 +74,50 @@
 		<p class="kicker">Young's Literal Translation</p>
 		<h1>Deep Research</h1>
 		<p class="lede">
-			Ask a question. An agent searches scripture exhaustively and synthesizes an answer from the
-			retrieved text alone. This can take a long time — leave this page open or come back later.
+			Start a question, or open any past research below. An agent searches scripture exhaustively and
+			synthesizes an answer from the retrieved text alone — leave it open or come back later.
 		</p>
 	</header>
 
-	{#if !i}
-		<form
-			onsubmit={(e) => {
-				e.preventDefault();
-				start();
-			}}
-		>
-			<textarea
-				placeholder="e.g. What does the Bible itself say bread means, from Genesis to Revelation?"
-				bind:value={q}
-				rows="3"
-				aria-label="Research question"></textarea>
-			<button type="submit" disabled={starting}>{starting ? 'Starting…' : 'Start research'}</button>
-		</form>
-	{:else if !o}
-		<section class="status">
-			<p class="question">“{q}”</p>
-			{#if msg}
-				<p class="msg">{msg}</p>
-				<button type="button" class="ghost" onclick={reset}>New research</button>
-			{:else}
-				<div class="spinner" aria-hidden="true"></div>
-				<p class="msg muted">Researching… status: {s || 'starting'}</p>
-			{/if}
-		</section>
-	{:else}
-		<section class="result">
-			<div class="bar">
-				<button type="button" onclick={download}>Download .md</button>
-				<button type="button" class="ghost" onclick={reset}>New research</button>
-			</div>
-			<article class="md">{@html String(marked.parse(o.m))}</article>
-		</section>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			start();
+		}}
+	>
+		<textarea
+			placeholder="e.g. What does the Bible itself say bread means, from Genesis to Revelation?"
+			bind:value={q}
+			rows="3"
+			aria-label="Research question"
+			onkeydown={(e) => {
+				if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+					e.preventDefault();
+					start();
+				}
+			}}></textarea>
+		<button type="submit" disabled={starting}>{starting ? 'Starting…' : 'Start research'}</button>
+	</form>
+	{#if msg}
+		<p class="msg">{msg}</p>
 	{/if}
+
+	<section class="list">
+		{#each items as r (r.i)}
+			<a
+				class="item"
+				href={`/deepresearch/${r.i}?l=${encodeURIComponent(r.l)}&q=${encodeURIComponent(r.q)}`}
+			>
+				<span class="q">{r.q}</span>
+				<span class="meta">
+					<span class={`badge ${badge(r.s)}`}>{r.s}</span>
+					<span class="time">{ago(r.c)}</span>
+				</span>
+			</a>
+		{:else}
+			<p class="empty">No research yet — ask the first question above.</p>
+		{/each}
+	</section>
 </main>
 
 <style>
@@ -189,7 +152,7 @@
 	}
 	.lede {
 		margin: 0.75rem auto 0;
-		max-width: 32rem;
+		max-width: 34rem;
 		color: #475569;
 		font-size: 1.05rem;
 		line-height: 1.5;
@@ -251,76 +214,76 @@
 		opacity: 0.55;
 		cursor: default;
 	}
-	button.ghost {
-		color: #1d4ed8;
-		background: #eef2f9;
-		border: 1px solid #dbe3f0;
-	}
-	.status {
-		text-align: center;
-		margin-top: 2rem;
-	}
-	.question {
-		color: #16233f;
-		font-size: 1.1rem;
-	}
-	.spinner {
-		width: 2rem;
-		height: 2rem;
-		margin: 1.2rem auto 0;
-		border: 3px solid #dbe3f0;
-		border-top-color: #1d4ed8;
-		border-radius: 50%;
-		animation: spin 0.9s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
 	.msg {
 		text-align: center;
 		color: #1d4ed8;
-		margin: 1.2rem 0;
+		margin: 1rem 0 0;
 		font-size: 0.98rem;
 	}
-	.msg.muted {
-		color: #94a3b8;
-	}
-	.result {
+	.list {
 		margin-top: 2rem;
-	}
-	.bar {
-		display: flex;
+		display: grid;
 		gap: 0.6rem;
-		justify-content: flex-end;
-		margin-bottom: 1.2rem;
 	}
-	.md {
-		background: #ffffff;
+	.item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		text-decoration: none;
+		padding: 0.9rem 1.1rem;
+		background: #fff;
 		border: 1px solid #e4e9f2;
 		border-radius: 12px;
-		padding: 1.5rem 1.75rem;
-		line-height: 1.7;
-		color: #1e293b;
+		transition:
+			border-color 0.15s ease,
+			box-shadow 0.15s ease,
+			transform 0.15s ease;
 	}
-	.md :global(h1) {
-		font-size: 1.5rem;
+	.item:hover {
+		border-color: #2563eb;
+		box-shadow: 0 10px 26px -18px rgba(22, 35, 63, 0.4);
+		transform: translateY(-1px);
+	}
+	.q {
 		color: #16233f;
+		font-size: 1.02rem;
+		font-weight: 500;
+		line-height: 1.35;
+		word-break: break-word;
 	}
-	.md :global(h2) {
-		font-size: 1.2rem;
-		color: #16233f;
+	.meta {
+		flex: none;
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
 	}
-	.md :global(blockquote) {
-		border-left: 3px solid #c3d0ea;
-		margin: 1rem 0;
-		padding: 0.2rem 1rem;
-		color: #475569;
+	.badge {
+		text-transform: uppercase;
+		font-size: 0.62rem;
+		letter-spacing: 0.08em;
+		font-weight: 700;
+		padding: 0.18rem 0.5rem;
+		border-radius: 999px;
+		color: #fff;
 	}
-	.md :global(code) {
-		background: #eef2f9;
-		border-radius: 4px;
-		padding: 0.1rem 0.35rem;
+	.badge.run {
+		background: #0891b2;
+	}
+	.badge.done {
+		background: #059669;
+	}
+	.badge.err {
+		background: #dc2626;
+	}
+	.time {
+		font-size: 0.78rem;
+		color: #94a3b8;
+		white-space: nowrap;
+	}
+	.empty {
+		text-align: center;
+		color: #94a3b8;
+		margin-top: 1.5rem;
 	}
 </style>

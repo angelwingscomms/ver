@@ -49,6 +49,9 @@
 		<p class="kicker">Young's Literal Translation</p>
 		<h1>Bible Search</h1>
 		<p class="lede">Ask in plain language and find the passage by meaning — not just by keyword.</p>
+		<p class="dr-link">
+			<a href="/deepresearch">Want a full answer from scripture? Try Deep Research →</a>
+		</p>
 		<div class="toggle" role="tablist" aria-label="Search scope">
 			<button
 				type="button"
@@ -164,6 +167,29 @@
 		color: #475569;
 		font-size: 1.05rem;
 		line-height: 1.5;
+	}
+	.dr-link {
+		margin: 1rem auto 0;
+		font-family:
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
+		font-size: 0.92rem;
+	}
+	.dr-link a {
+		color: #1d4ed8;
+		text-decoration: none;
+		font-weight: 600;
+		border-bottom: 1px solid transparent;
+		transition:
+			color 0.15s ease,
+			border-color 0.15s ease;
+	}
+	.dr-link a:hover {
+		color: #1e40af;
+		border-bottom-color: #1e40af;
 	}
 
 	.toggle {

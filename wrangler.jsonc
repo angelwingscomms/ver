@@ -25,6 +25,10 @@
 			"secret_name": "OPENROUTER_KEY"
 		}
 	],
+	"vars": {
+		"VER_WORKFLOWS_URL": "https://ver-workflows.apexlinks.workers.dev",
+		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4"
+	},
 	"workflows": [
 		{
 			"name": "deepresearch",
@@ -32,6 +36,9 @@
 			"class_name": "DeepResearchWorkflow",
 			"script_name": "ver-workflows"
 		}
+	],
+	"services": [
+		{ "binding": "VER_WORKFLOWS", "service": "ver-workflows" }
 	],
 	"workers_dev": true,
 	"preview_urls": true,
