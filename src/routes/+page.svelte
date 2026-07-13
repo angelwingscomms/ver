@@ -308,7 +308,7 @@
 		margin-top: 2.2rem;
 		display: flex;
 		flex-direction: column;
-		gap: 0.9rem;
+		gap: 1rem;
 	}
 	.hit {
 		background: #ffffff;
@@ -330,7 +330,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		padding: 1.1rem 1.25rem;
+		padding: 1.35rem 1.25rem;
 	}
 	.hit summary::-webkit-details-marker {
 		display: none;
@@ -389,7 +389,7 @@
 	}
 	.text {
 		margin: 0;
-		padding: 0 1.25rem 1.1rem;
+		padding: 0.15rem 1.25rem 1.35rem;
 		white-space: pre-wrap;
 		line-height: 1.65;
 		font-size: 1.05rem;
