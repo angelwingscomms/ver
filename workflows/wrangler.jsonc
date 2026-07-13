@@ -1,0 +1,17 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "ver-workflows",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-12",
+	"observability": { "enabled": true },
+	"workflows": [
+		{ "name": "deepresearch", "binding": "DEEPRESEARCH_WF", "class_name": "DeepResearchWorkflow" }
+	],
+	"secrets_store_secrets": [
+		{
+			"binding": "OPENROUTER_KEY",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "OPENROUTER_KEY"
+		}
+	]
+}
