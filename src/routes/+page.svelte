@@ -48,9 +48,7 @@
 	<header class="hero">
 		<p class="kicker">Young's Literal Translation</p>
 		<h1>Bible Search</h1>
-		<p class="lede">
-			Ask in plain language and find the passage by meaning — not just by keyword.
-		</p>
+		<p class="lede">Ask in plain language and find the passage by meaning — not just by keyword.</p>
 		<div class="toggle" role="tablist" aria-label="Search scope">
 			<button
 				type="button"
@@ -73,7 +71,12 @@
 		</div>
 	</header>
 
-	<form onsubmit={(e) => { e.preventDefault(); search(); }}>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			search();
+		}}
+	>
 		<div class="field q">
 			<input
 				placeholder="search the Bible…  e.g. God so loved the world"
@@ -105,7 +108,10 @@
 		{#each r as hit}
 			<details class="hit">
 				<summary>
-					<span class="ref">{hit.b} <span class="ch">{hit.c}{typeof hit.v === 'number' ? `:${hit.v}` : ''}</span></span>
+					<span class="ref"
+						>{hit.b}
+						<span class="ch">{hit.c}{typeof hit.v === 'number' ? `:${hit.v}` : ''}</span></span
+					>
 					<span class="right">
 						<span class="score">{hit.s.toFixed(3)}</span>
 						<span class="chev"></span>
@@ -139,7 +145,11 @@
 		color: #1e40af;
 		margin: 0 0 0.6rem;
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 	}
 	h1 {
 		font-size: clamp(2.2rem, 6vw, 3.2rem);
@@ -171,7 +181,11 @@
 		font-size: 0.9rem;
 		font-weight: 600;
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		color: #64748b;
 		background: transparent;
 		border: none;
@@ -199,7 +213,9 @@
 		padding: 0.7rem;
 		border: 1px solid #dbe3f0;
 		border-radius: 14px;
-		box-shadow: 0 1px 2px rgba(22, 35, 63, 0.04), 0 12px 30px -18px rgba(22, 35, 63, 0.25);
+		box-shadow:
+			0 1px 2px rgba(22, 35, 63, 0.04),
+			0 12px 30px -18px rgba(22, 35, 63, 0.25);
 	}
 	.field {
 		min-width: 0;
@@ -215,7 +231,11 @@
 		padding: 0 0.9rem;
 		font-size: 1rem;
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		color: #16233f;
 		background: #f4f7fc;
 		border: 1px solid #dbe3f0;
@@ -249,7 +269,11 @@
 		font-size: 1rem;
 		font-weight: 600;
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		color: #fff;
 		background: #1d4ed8;
 		border: none;
@@ -335,7 +359,11 @@
 	}
 	.ref {
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		font-weight: 600;
 		font-size: 0.92rem;
 		letter-spacing: 0.01em;
@@ -347,7 +375,11 @@
 	}
 	.score {
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		font-size: 0.72rem;
 		color: #94a3b8;
 		background: #e8eefb;
@@ -368,7 +400,11 @@
 		margin-top: 2.5rem;
 		text-align: center;
 		font-family:
-			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		font-size: 0.78rem;
 		letter-spacing: 0.03em;
 		color: #94a3b8;
