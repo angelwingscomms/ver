@@ -35,6 +35,12 @@
 	],
 	"workers_dev": true,
 	"preview_urls": true,
+	"observability": {
+		"logs": {
+			"enabled": true,
+			"invocation_logs": true
+		}
+	},
 	"dev": {
 		"port": 7272
 	}
