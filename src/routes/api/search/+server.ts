@@ -5,23 +5,33 @@ import type { RequestHandler } from './$types';
 
 const COLS = { chapters: 'bible', verses: 'verses' } as const;
 
+type SecretVal = string | { get?: () => Promise<string> } | undefined;
+async function get_secret(v: SecretVal): Promise<string> {
+	if (v && typeof (v as { get?: unknown }).get === 'function')
+		return await (v as { get: () => Promise<string> }).get();
+	return (v as string) ?? '';
+}
+
 let q: QdrantClient | null = null;
 async function client() {
-	const url = env.QDRANT_URL;
-	const key = env.QDRANT_KEY;
-	if (!q) q = new QdrantClient({ url, apiKey: key, checkCompatibility: false });
+	if (!q) {
+		const url = await get_secret(env.QDRANT_URL);
+		const key = await get_secret(env.QDRANT_KEY);
+		q = new QdrantClient({ url, apiKey: key, checkCompatibility: false });
+	}
 	return q;
 }
 
 async function embed(text: string): Promise<number[]> {
+	const key = await get_secret(env.OPENROUTER_KEY);
 	console.error('[embed] calling openrouter for', text.slice(0, 80));
-	console.error('[embed] key:', `${env.OPENROUTER_KEY?.slice(0, 8)}…(${env.OPENROUTER_KEY?.length} chars)`);
+	console.error('[embed] key:', `${key.slice(0, 8)}…(${key.length} chars)`);
 	let r: Response;
 	try {
 		r = await fetch('https://openrouter.ai/api/v1/embeddings', {
 			method: 'POST',
 			headers: {
-				Authorization: `Bearer ${env.OPENROUTER_KEY}`,
+				Authorization: `Bearer ${key}`,
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({ model: 'qwen/qwen3-embedding-8b', input: text })
@@ -32,7 +42,7 @@ async function embed(text: string): Promise<number[]> {
 		console.error('[embed] fetch threw:', err.name, err.message);
 		console.error('[embed] cause:', JSON.stringify(cause, Object.getOwnPropertyNames(cause ?? {})));
 		console.error('[embed] stack:', err.stack);
-		console.error('[embed] env OPENROUTER_KEY set:', !!env.OPENROUTER_KEY, 'len:', env.OPENROUTER_KEY?.length ?? 0);
+		console.error('[embed] env OPENROUTER_KEY set:', !!key, 'len:', key.length);
 		const msg = `${err.name}: ${err.message} cause=${JSON.stringify(cause)}`;
 		throw error(502, `embed fetch failed: ${msg}`);
 	}
