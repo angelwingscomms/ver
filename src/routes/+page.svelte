@@ -2,9 +2,10 @@
 	import { BOOKS } from '$lib/books';
 	let q = $state('');
 	let b = $state('');
-	let c = $state<number | ''>('');
-	let r = $state<{ b: string; c: number; t: string; s: number }[]>([]);
-	type SR = { r?: { b: string; c: number; t: string; s: number }[] };
+	let x = $state<number | ''>('');
+	let mode = $state<'chapters' | 'verses'>('chapters');
+	let r = $state<{ b: string; c: number; v?: number; t: string; s: number }[]>([]);
+	type SR = { r?: { b: string; c: number; v?: number; t: string; s: number }[]; message?: string };
 	let loading = $state(false);
 	let msg = $state('');
 
@@ -13,11 +14,12 @@
 		loading = true;
 		msg = '';
 		try {
-			const res = await fetch('/api/search', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ q, b: b || undefined, c: c === '' ? undefined : Number(c) })
-			});
+			const p = new URLSearchParams();
+			p.set('q', q);
+			if (b) p.set('b', b);
+			if (x !== '') p.set('x', String(x));
+			p.set(mode === 'verses' ? 'v' : 'c', '');
+			const res = await fetch(`/api/search?${p.toString()}`);
 			const d = (await res.json()) as SR;
 			if (!res.ok) {
 				msg = d.message ?? 'search failed';
@@ -49,6 +51,26 @@
 		<p class="lede">
 			Ask in plain language and find the passage by meaning — not just by keyword.
 		</p>
+		<div class="toggle" role="tablist" aria-label="Search scope">
+			<button
+				type="button"
+				role="tab"
+				aria-selected={mode === 'verses'}
+				class:on={mode === 'verses'}
+				onclick={() => (mode = 'verses')}
+			>
+				Search verses
+			</button>
+			<button
+				type="button"
+				role="tab"
+				aria-selected={mode === 'chapters'}
+				class:on={mode === 'chapters'}
+				onclick={() => (mode = 'chapters')}
+			>
+				Search chapters
+			</button>
+		</div>
 	</header>
 
 	<form onsubmit={(e) => { e.preventDefault(); search(); }}>
@@ -68,7 +90,7 @@
 			</select>
 		</div>
 		<div class="field c">
-			<input type="number" placeholder="Ch." bind:value={c} min="1" aria-label="Chapter" />
+			<input type="number" placeholder="Ch." bind:value={x} min="1" aria-label="Chapter" />
 		</div>
 		<button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
 	</form>
@@ -83,7 +105,7 @@
 		{#each r as hit}
 			<details class="hit">
 				<summary>
-					<span class="ref">{hit.b} <span class="ch">{hit.c}</span></span>
+					<span class="ref">{hit.b} <span class="ch">{hit.c}{typeof hit.v === 'number' ? `:${hit.v}` : ''}</span></span>
 					<span class="right">
 						<span class="score">{hit.s.toFixed(3)}</span>
 						<span class="chev"></span>
@@ -132,6 +154,41 @@
 		color: #475569;
 		font-size: 1.05rem;
 		line-height: 1.5;
+	}
+
+	.toggle {
+		display: inline-flex;
+		margin: 1.8rem auto 0;
+		padding: 0.28rem;
+		background: #eef2f9;
+		border: 1px solid #dbe3f0;
+		border-radius: 999px;
+		gap: 0.25rem;
+	}
+	.toggle button {
+		height: 2.3rem;
+		padding: 0 1.15rem;
+		font-size: 0.9rem;
+		font-weight: 600;
+		font-family:
+			system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+		color: #64748b;
+		background: transparent;
+		border: none;
+		border-radius: 999px;
+		cursor: pointer;
+		transition:
+			background 0.18s ease,
+			color 0.18s ease,
+			box-shadow 0.18s ease;
+	}
+	.toggle button:hover:not(.on) {
+		color: #1e40af;
+	}
+	.toggle button.on {
+		color: #fff;
+		background: #1d4ed8;
+		box-shadow: 0 6px 16px -10px rgba(29, 78, 216, 0.8);
 	}
 
 	form {

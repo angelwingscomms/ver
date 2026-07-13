@@ -3,7 +3,8 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import { env } from '$env/dynamic/private';
 import type { RequestHandler } from './$types';
 
-const COL = 'bible';
+const COLS = { chapters: 'bible', verses: 'verses' } as const;
+
 let q: QdrantClient | null = null;
 async function client() {
 	const url = await env.QDRANT_URL.get();
@@ -26,17 +27,25 @@ async function embed(text: string): Promise<number[]> {
 	return d.data[0].embedding;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
-	const { q: query, b, c } = (await request.json()) as { q?: unknown; b?: string; c?: number };
-	if (!query || typeof query !== 'string') throw error(400, 'q required');
+export const GET: RequestHandler = async ({ url }) => {
+	const query = url.searchParams.get('q');
+	const b = url.searchParams.get('b');
+	const x = url.searchParams.get('x');
+	const has_c = url.searchParams.has('c');
+	const has_v = url.searchParams.has('v');
+	if (has_c && has_v)
+		throw error(400, 'ambiguous scope: pass exactly one of ?c (chapters) or ?v (verses), not both');
+	const col = has_c ? COLS.chapters : COLS.verses;
+	if (!query || !query.trim()) throw error(400, 'q required');
 	const v = await embed(query);
 	const f = { must: [] as any[] };
 	if (b) f.must.push({ key: 'b', match: { value: b } });
-	if (typeof c === 'number') f.must.push({ key: 'c', match: { value: c } });
-	const hits = await (await client()).search(COL, { vector: v, limit: 10, filter: f.must.length ? f : undefined });
+	if (x != null && x !== '') f.must.push({ key: 'c', match: { value: Number(x) } });
+	const hits = await (await client()).search(col, { vector: v, limit: 10, filter: f.must.length ? f : undefined });
 	const r = hits.map((h) => ({
 		b: h.payload?.b,
 		c: h.payload?.c,
+		v: h.payload?.v,
 		t: h.payload?.t,
 		s: h.score
 	}));
