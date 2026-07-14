@@ -1,94 +1,15 @@
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "ver",
-	"compatibility_date": "2026-07-12",
-	"compatibility_flags": ["nodejs_als"],
-	"main": ".svelte-kit/cloudflare/_worker.js",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": ".svelte-kit/cloudflare"
-	},
-	"secrets_store_secrets": [
-		{
-			"binding": "QDRANT_URL",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "QDRANT_URL"
-		},
-		{
-			"binding": "QDRANT_KEY",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "QDRANT_KEY"
-		},
-		{
-			"binding": "OPENROUTER_KEY",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "OPENROUTER_KEY"
-		},
-		{
-			"binding": "SECRET",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "SECRET"
-		},
-		{
-			"binding": "GOOGLE_ID",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "GOOGLE_ID"
-		},
-		{
-			"binding": "GOOGLE_SECRET",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "GOOGLE_SECRET"
-		},
-		{
-			"binding": "PAYSTACK_SECRET_KEY_TEST",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "PAYSTACK_SECRET_KEY_TEST"
-		},
-		{
-			"binding": "PAYSTACK_SECRET_KEY_LIVE",
-			"store_id": "45748cb1c67946df943075fa14cb8815",
-			"secret_name": "PAYSTACK_SECRET_KEY_LIVE"
-		}
-	],
-	"vars": {
-		"VER_WORKFLOWS_URL": "https://ver-workflows.apexlinks.workers.dev",
-		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4",
-		"PAYSTACK_PUBLIC_KEY_TEST": "pk_test_a30df8e38870ce565a29e0d20cdca29a8c861cf6",
-		"PAYSTACK_PUBLIC_KEY_LIVE": "pk_live_04ee2be5b0a9351b8e055a36b1062dafb4a0eaa4",
-		"TOKEN_RATE": "1.08",
-		"NGN_USD": "1440",
-		"MIN_START_KOBO": "5000",
-		"MAX_PER_RESEARCH_KOBO": "200000"
-	},
-	"workflows": [
-		{
-			"name": "deepresearch",
-			"binding": "DEEPRESEARCH_WF",
-			"class_name": "DeepResearchWorkflow",
-			"script_name": "ver-workflows"
-		}
-	],
-	"services": [
-		{ "binding": "VER_WORKFLOWS", "service": "ver-workflows" }
-	],
-	"workers_dev": true,
-	"preview_urls": true,
-	"observability": {
-		"enabled": false,
-		"head_sampling_rate": 1,
-		"logs": {
-			"enabled": true,
-			"head_sampling_rate": 1,
-			"persist": true,
-			"invocation_logs": true
-		},
-		"traces": {
-			"enabled": true,
-			"persist": true,
-			"head_sampling_rate": 1
-		}
-	},
-	"dev": {
-		"port": 7272
-	}
+  "name": "ver",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".svelte-kit/cloudflare"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1, "persist": true, "invocation_logs": true },
+    "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 }
+  }
 }
