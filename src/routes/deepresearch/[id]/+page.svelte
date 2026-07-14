@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { marked } from 'marked';
+	import '$lib/deepresearch/dr.css';
 	import { slug } from '$lib/deepresearch/core';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -27,7 +28,8 @@
 			const res = await fetch(`/api/deepresearch/${i}${ll ? `?l=${encodeURIComponent(ll)}` : ''}`);
 			if (!res.ok) {
 				stop_poll();
-				msg = res.status === 404 ? 'research not found (it may have expired)' : 'status check failed';
+				msg =
+					res.status === 404 ? 'research not found (it may have expired)' : 'status check failed';
 				return;
 			}
 			const d = (await res.json()) as { s: string; o: O | null; e: unknown; t: T[] };
@@ -96,10 +98,18 @@
 		{#if msg}
 			<p class="msg">{msg}</p>
 			<div class="actions">
-				<button type="button" onclick={() => { retries = 0; msg = ''; poll(); timer = setInterval(poll, 5000); }}
-					>Retry</button
+				<button
+					type="button"
+					onclick={() => {
+						retries = 0;
+						msg = '';
+						poll();
+						timer = setInterval(poll, 5000);
+					}}>Retry</button
 				>
-				<button type="button" class="ghost" onclick={() => goto('/deepresearch')}>New research</button>
+				<button type="button" class="ghost" onclick={() => goto('/deepresearch')}
+					>New research</button
+				>
 			</div>
 		{:else if !o}
 			<div class="spinner" aria-hidden="true"></div>
@@ -115,10 +125,12 @@
 				</ul>
 			{/if}
 		{:else}
-				<section class="result">
+			<section class="result">
 				<div class="bar">
 					{#if o.c != null}
-						<span class="cost">Cost ₦{(o.c / 100).toFixed(2)} · Balance ₦{(o.b! / 100).toFixed(2)}</span>
+						<span class="cost"
+							>Cost ₦{(o.c / 100).toFixed(2)} · Balance ₦{(o.b! / 100).toFixed(2)}</span
+						>
 					{/if}
 					<button type="button" onclick={download}>Download .md</button>
 					<button type="button" class="ghost" onclick={() => goto('/deepresearch')}
@@ -132,35 +144,6 @@
 </main>
 
 <style>
-	main {
-		max-width: 760px;
-		margin: 0 auto;
-		padding: 4rem 1.25rem 5rem;
-	}
-	.hero {
-		text-align: left;
-		margin-bottom: 2.5rem;
-	}
-	.kicker {
-		text-transform: uppercase;
-		letter-spacing: 0.22em;
-		font-size: 0.7rem;
-		color: #1e40af;
-		margin: 0 0 0.6rem;
-		font-family:
-			system-ui,
-			-apple-system,
-			'Segoe UI',
-			Roboto,
-			sans-serif;
-	}
-	h1 {
-		font-size: clamp(2.2rem, 6vw, 3.2rem);
-		font-weight: 600;
-		margin: 0;
-		letter-spacing: -0.01em;
-		color: #16233f;
-	}
 	.back {
 		margin-top: 1rem;
 	}
@@ -180,11 +163,6 @@
 		border-top-color: #1d4ed8;
 		border-radius: 50%;
 		animation: spin 0.9s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 	.msg {
 		text-align: left;
@@ -319,34 +297,5 @@
 	}
 	.md :global(tbody tr:nth-child(even)) {
 		background: #f7f9fc;
-	}
-	button {
-		height: 3rem;
-		padding: 0 1.4rem;
-		font-size: 1rem;
-		font-weight: 600;
-		font-family:
-			system-ui,
-			-apple-system,
-			'Segoe UI',
-			Roboto,
-			sans-serif;
-		color: #fff;
-		background: #1d4ed8;
-		border: none;
-		border-radius: 9px;
-		cursor: pointer;
-	}
-	button:hover:not(:disabled) {
-		background: #1e40af;
-	}
-	button:disabled {
-		opacity: 0.55;
-		cursor: default;
-	}
-	button.ghost {
-		color: #1d4ed8;
-		background: #eef2f9;
-		border: 1px solid #dbe3f0;
 	}
 </style>

@@ -1,5 +1,3 @@
-import { BOOKS } from '$lib/books';
-
 export const MODEL = 'deepseek/deepseek-v4-flash';
 export const MAX_TURNS = 100;
 export const SEARCH_URL = 'https://ver.apexlinks.org/api/search';
@@ -102,11 +100,7 @@ export async function search_bible(args: Record<string, unknown>): Promise<unkno
 	const p = new URLSearchParams();
 	p.set('q', String(args.query ?? ''));
 	p.set(args.scope === 'chapters' ? 'c' : 'v', '');
-	if (args.book) {
-		const raw = String(args.book);
-		const num = /^\d+$/.test(raw) ? raw : String(BOOKS.indexOf(raw) + 1);
-		p.set('b', num);
-	}
+	if (args.book) p.set('b', String(args.book));
 	if (args.chapter != null && args.chapter !== '') p.set('x', String(args.chapter));
 	const res = await fetch(`${SEARCH_URL}?${p}`);
 	if (!res.ok) throw new Error(`search ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -121,7 +115,11 @@ export type Usage = {
 
 export type LlmResp = { message: Msg; usage?: Usage };
 
-export async function call_llm(key: string, messages: Msg[], force_finish: boolean): Promise<LlmResp> {
+export async function call_llm(
+	key: string,
+	messages: Msg[],
+	force_finish: boolean
+): Promise<LlmResp> {
 	const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',
 		headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },

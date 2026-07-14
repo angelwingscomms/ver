@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import '$lib/deepresearch/dr.css';
 
 	type R = { i: string; q: string; l: string; c: number; s: string };
 	let items = $state<R[]>([]);
@@ -48,7 +49,9 @@
 				msg = d.error ?? d.message ?? 'failed to start';
 				return;
 			}
-			goto(`/deepresearch/${d.i}?l=${encodeURIComponent(d.l ?? '')}&q=${encodeURIComponent(q.trim())}`);
+			goto(
+				`/deepresearch/${d.i}?l=${encodeURIComponent(d.l ?? '')}&q=${encodeURIComponent(q.trim())}`
+			);
 		} catch {
 			msg = 'failed to start';
 		} finally {
@@ -82,8 +85,8 @@
 		<p class="kicker">Young's Literal Translation</p>
 		<h1>Deep Research</h1>
 		<p class="lede">
-			Start a question, or open any past research below. An agent searches scripture exhaustively and
-			synthesizes an answer from the retrieved text alone — leave it open or come back later.
+			Start a question, or open any past research below. An agent searches scripture exhaustively
+			and synthesizes an answer from the retrieved text alone — leave it open or come back later.
 		</p>
 	</header>
 
@@ -129,35 +132,6 @@
 </main>
 
 <style>
-	main {
-		max-width: 760px;
-		margin: 0 auto;
-		padding: 4rem 1.25rem 5rem;
-	}
-	.hero {
-		text-align: left;
-		margin-bottom: 2.5rem;
-	}
-	.kicker {
-		text-transform: uppercase;
-		letter-spacing: 0.22em;
-		font-size: 0.7rem;
-		color: #1e40af;
-		margin: 0 0 0.6rem;
-		font-family:
-			system-ui,
-			-apple-system,
-			'Segoe UI',
-			Roboto,
-			sans-serif;
-	}
-	h1 {
-		font-size: clamp(2.2rem, 6vw, 3.2rem);
-		font-weight: 600;
-		margin: 0;
-		letter-spacing: -0.01em;
-		color: #16233f;
-	}
 	.lede {
 		margin: 0.75rem auto 0;
 		max-width: 34rem;
@@ -198,36 +172,6 @@
 		border-color: #2563eb;
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 	}
-	button {
-		height: 3rem;
-		padding: 0 1.4rem;
-		font-size: 1rem;
-		font-weight: 600;
-		font-family:
-			system-ui,
-			-apple-system,
-			'Segoe UI',
-			Roboto,
-			sans-serif;
-		color: #fff;
-		background: #1d4ed8;
-		border: none;
-		border-radius: 9px;
-		cursor: pointer;
-	}
-	button:hover:not(:disabled) {
-		background: #1e40af;
-	}
-	button:disabled {
-		opacity: 0.55;
-		cursor: default;
-	}
-	.msg {
-		text-align: left;
-		color: #1d4ed8;
-		margin: 1rem 0 0;
-		font-size: 0.98rem;
-	}
 	.list {
 		margin-top: 2rem;
 		display: grid;
@@ -247,6 +191,12 @@
 			border-color 0.15s ease,
 			box-shadow 0.15s ease,
 			transform 0.15s ease;
+	}
+	.msg {
+		text-align: left;
+		color: #1d4ed8;
+		margin: 1rem 0 0;
+		font-size: 0.98rem;
 	}
 	.item:hover {
 		border-color: #2563eb;
