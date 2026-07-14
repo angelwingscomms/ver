@@ -23,11 +23,42 @@
 			"binding": "OPENROUTER_KEY",
 			"store_id": "45748cb1c67946df943075fa14cb8815",
 			"secret_name": "OPENROUTER_KEY"
+		},
+		{
+			"binding": "SECRET",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "SECRET"
+		},
+		{
+			"binding": "GOOGLE_ID",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "GOOGLE_ID"
+		},
+		{
+			"binding": "GOOGLE_SECRET",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "GOOGLE_SECRET"
+		},
+		{
+			"binding": "PAYSTACK_SECRET_KEY_TEST",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "PAYSTACK_SECRET_KEY_TEST"
+		},
+		{
+			"binding": "PAYSTACK_SECRET_KEY_LIVE",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "PAYSTACK_SECRET_KEY_LIVE"
 		}
 	],
 	"vars": {
 		"VER_WORKFLOWS_URL": "https://ver-workflows.apexlinks.workers.dev",
-		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4"
+		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4",
+		"PAYSTACK_PUBLIC_KEY_TEST": "pk_test_a30df8e38870ce565a29e0d20cdca29a8c861cf6",
+		"PAYSTACK_PUBLIC_KEY_LIVE": "pk_live_04ee2be5b0a9351b8e055a36b1062dafb4a0eaa4",
+		"TOKEN_RATE": "1.08",
+		"NGN_USD": "1440",
+		"MIN_START_KOBO": "5000",
+		"MAX_PER_RESEARCH_KOBO": "200000"
 	},
 	"workflows": [
 		{

@@ -22,9 +22,21 @@
 			"binding": "OPENROUTER_KEY",
 			"store_id": "45748cb1c67946df943075fa14cb8815",
 			"secret_name": "OPENROUTER_KEY"
+		},
+		{
+			"binding": "QDRANT_URL",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "QDRANT_URL"
+		},
+		{
+			"binding": "QDRANT_KEY",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "QDRANT_KEY"
 		}
 	],
 	"vars": {
-		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4"
+		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4",
+		"TOKEN_RATE": "1.08",
+		"NGN_USD": "1440"
 	}
 }

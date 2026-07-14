@@ -9,8 +9,9 @@ declare global {
 			cf?: IncomingRequestCfProperties;
 		}
 
-		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			user?: { id: string; name: string; picture?: string; email?: string } | null;
+		}
 		// interface PageData {}
 		// interface PageState {}
 	}

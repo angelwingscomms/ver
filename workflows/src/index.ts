@@ -8,21 +8,28 @@ import {
 import {
 	MAX_TURNS,
 	SYSTEM_PROMPT,
+	MODEL,
 	call_llm,
 	search_bible,
 	type Msg
 } from '../../src/lib/deepresearch/core';
+import { calc_cost, kobo } from '../../src/lib/server/pricing';
+import { deduct, get_balance } from '../../src/lib/server/token_balance';
 
 type T = { step: string; k: string; n: number; c: string };
 type E = {
 	OPENROUTER_KEY: { get(): Promise<string> };
+	QDRANT_URL: { get(): Promise<string> };
+	QDRANT_KEY: { get(): Promise<string> };
+	TOKEN_RATE?: string;
+	NGN_USD?: string;
 	DR_LOG: DurableObjectNamespace;
 	DR_INDEX: DurableObjectNamespace;
 	INTERNAL_TOKEN: string;
 };
 
 type R = { i: string; q: string; l: string; c: number };
-type P = { q: string; log_id: string };
+type P = { q: string; log_id: string; user_id: string; budget_kobo: number };
 
 async function check_auth(req: Request, env: E): Promise<Response | null> {
 	if (req.headers.get('authorization') !== `Bearer ${env.INTERNAL_TOKEN}`)
@@ -99,36 +106,54 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 	async run(event: WorkflowEvent<P>, step: WorkflowStep) {
 		const q = event.payload.q;
 		const log_id = event.payload.log_id;
-		console.log(`[dr] run start :: log_id=${log_id} q=${JSON.stringify(q)} max_turns=${MAX_TURNS}`);
+		const user_id = event.payload.user_id;
+		const budget_kobo = event.payload.budget_kobo;
+		console.log(
+			`[dr] run start :: log_id=${log_id} user=${user_id} budget=${budget_kobo} q=${JSON.stringify(q)} max_turns=${MAX_TURNS}`
+		);
 		const key = await this.env.OPENROUTER_KEY.get();
 		console.log(`[dr] openrouter key loaded (len=${key.length})`);
+		const token_rate = Number(this.env.TOKEN_RATE) || 1.08;
+		const ngn_usd = Number(this.env.NGN_USD) || 1440;
 		const messages: Msg[] = [
 			{ role: 'system', content: SYSTEM_PROMPT },
 			{ role: 'user', content: q }
 		];
 		let answer = '';
+		let cost_kobo = 0;
 		for (let t = 0; t < MAX_TURNS && !answer; t++) {
-			console.log(`[dr] turn ${t}/${MAX_TURNS - 1} :: messages=${messages.length}`);
-			const m = await step.do(`llm-${t}`, RETRY, async () => {
-				console.log(`[dr] llm-${t} :: calling model (force_finish=${t === MAX_TURNS - 1})`);
-				let msg: Msg;
+			const force_finish = t === MAX_TURNS - 1 || cost_kobo >= budget_kobo;
+			console.log(
+				`[dr] turn ${t}/${MAX_TURNS - 1} :: messages=${messages.length} cost=${cost_kobo}/${budget_kobo} force_finish=${force_finish}`
+			);
+			const { message: m, usage } = await step.do(`llm-${t}`, RETRY, async () => {
+				console.log(`[dr] llm-${t} :: calling model (force_finish=${force_finish})`);
+				let resp;
 				try {
-					msg = await call_llm(key, messages, t === MAX_TURNS - 1);
+					resp = await call_llm(key, messages, force_finish);
 				} catch (e) {
 					console.error(`[dr] llm-${t} :: call_llm FAILED :: ${String(e)}`);
 					throw e;
 				}
 				console.log(
-					`[dr] llm-${t} :: got message content_len=${msg.content?.length ?? 0} tool_calls=${(msg.tool_calls ?? []).length}`
+					`[dr] llm-${t} :: got message content_len=${resp.message.content?.length ?? 0} tool_calls=${(resp.message.tool_calls ?? []).length}`
 				);
-				for (const tc of msg.tool_calls ?? [])
+				for (const tc of resp.message.tool_calls ?? [])
 					console.log(`[dr] llm-${t} :: tool_call name=${tc.function.name} args=${tc.function.arguments}`);
-				for (const th of thoughts_from_msg(msg, t)) {
+				for (const th of thoughts_from_msg(resp.message, t)) {
 					console.log(`[dr] llm-${t} :: thought k=${th.k} c=${JSON.stringify(th.c).slice(0, 160)}`);
 					await log_think(this.env, log_id, `llm-${t}-${th.k}`, th.k, t, th.c);
 				}
-				return msg;
+				return resp;
 			});
+			if (usage) {
+				const cache = usage.prompt_tokens_details?.cached_tokens ?? 0;
+				const usd = calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, cache);
+				cost_kobo += kobo(usd, token_rate, ngn_usd);
+				console.log(
+					`[dr] llm-${t} :: usage in=${usage.prompt_tokens} out=${usage.completion_tokens} cache=${cache} cost_kobo=${cost_kobo}`
+				);
+			}
 			messages.push(m);
 			if (!m.tool_calls?.length) {
 				console.log(`[dr] llm-${t} :: no tool_calls, prompting to continue`);
@@ -204,8 +229,18 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			answer =
 				[...messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ??
 				'No answer produced.';
-		console.log(`[dr] run complete :: answer_len=${answer.length}`);
-		return { q, m: `# question\n\n${q}\n\n# answer\n\n${answer}` };
+		const spent = Math.min(cost_kobo, budget_kobo);
+		console.log(`[dr] run complete :: answer_len=${answer.length} spent=${spent}`);
+		let bal = 0;
+		if (user_id) {
+			try {
+				bal = spent > 0 ? await deduct(this.env, user_id, spent) : await get_balance(this.env, user_id);
+				console.log(`[dr] deducted ${spent} kobo, balance=${bal}`);
+			} catch (e) {
+				console.error(`[dr] deduct FAILED :: ${String(e)}`);
+			}
+		}
+		return { q, m: `# question\n\n${q}\n\n# answer\n\n${answer}`, c: spent, b: bal };
 	}
 }
 
@@ -257,9 +292,16 @@ export default {
 		if (req.method === 'POST' && u.pathname === '/create') {
 			const deny = await check_auth(req, env);
 			if (deny) return deny;
-			const { q, log_id } = (await req.json()) as { q: string; log_id: string };
-			console.log(`[dr] create proxy q=${JSON.stringify(q).slice(0, 120)} log_id=${log_id}`);
-			const inst = await env.DEEPRESEARCH_WF.create({ params: { q, log_id } });
+			const { q, log_id, user_id, budget_kobo } = (await req.json()) as {
+				q: string;
+				log_id: string;
+				user_id?: string;
+				budget_kobo?: number;
+			};
+			console.log(`[dr] create proxy q=${JSON.stringify(q).slice(0, 120)} log_id=${log_id} user=${user_id ?? ''} budget=${budget_kobo ?? 0}`);
+			const inst = await env.DEEPRESEARCH_WF.create({
+				params: { q, log_id, user_id: user_id ?? '', budget_kobo: budget_kobo ?? 0 }
+			});
 			const idx = env.DR_INDEX.idFromName('index');
 			await env.DR_INDEX.get(idx).fetch('https://do/add', {
 				method: 'POST',
@@ -277,23 +319,6 @@ export default {
 			console.log(`[dr] fetch /thoughts/${m[1]}`);
 			const id = env.DR_LOG.idFromName(m[1]);
 			return env.DR_LOG.get(id).fetch('https://do/thoughts');
-		}
-		const tm = u.pathname.match(/^\/terminate\/([^/]+)$/);
-		if (tm) {
-			const deny = await check_auth(req, env);
-			if (deny) return deny;
-			console.log(`[dr] terminate ${tm[1]}`);
-			try {
-				await env.DEEPRESEARCH_WF.get(tm[1]).terminate();
-				return new Response(JSON.stringify({ ok: true }), {
-					headers: { 'Content-Type': 'application/json' }
-				});
-			} catch (e) {
-				return new Response(JSON.stringify({ error: String(e) }), {
-					status: 500,
-					headers: { 'Content-Type': 'application/json' }
-				});
-			}
 		}
 		const tm = u.pathname.match(/^\/terminate\/([^/]+)$/);
 		if (tm) {

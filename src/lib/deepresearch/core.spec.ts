@@ -16,18 +16,18 @@ describe('search_bible', () => {
 	it('builds verse-scope url with filters', async () => {
 		const fetch_mock = vi.fn(async () => new Response(JSON.stringify({ r: [] })));
 		vi.stubGlobal('fetch', fetch_mock);
-		await search_bible({ query: 'light', scope: 'verses', book: '1 Samuel', chapter: 3 });
-		const url = String(fetch_mock.mock.calls[0][0]);
+		await search_bible({ query: 'light', scope: 'verses', book: 10, chapter: 3 });
+		const url = String((fetch_mock.mock.calls[0] as any)[0]);
 		expect(url).toContain('q=light');
 		expect(url).toContain('v=');
-		expect(url).toContain('b=1+Samuel');
+		expect(url).toContain('b=10');
 		expect(url).toContain('x=3');
 	});
 	it('builds chapter-scope url without filters', async () => {
 		const fetch_mock = vi.fn(async () => new Response(JSON.stringify({ r: [] })));
 		vi.stubGlobal('fetch', fetch_mock);
 		await search_bible({ query: 'exodus from egypt', scope: 'chapters' });
-		const url = String(fetch_mock.mock.calls[0][0]);
+		const url = String((fetch_mock.mock.calls[0] as any)[0]);
 		expect(url).toContain('c=');
 		expect(url).not.toContain('b=');
 	});
@@ -45,13 +45,17 @@ describe('call_llm', () => {
 		const fetch_mock = vi.fn(
 			async () =>
 				new Response(
-					JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'hi' } }] })
+					JSON.stringify({
+						choices: [{ message: { role: 'assistant', content: 'hi' } }],
+						usage: { prompt_tokens: 1, completion_tokens: 2 }
+					})
 				)
 		);
 		vi.stubGlobal('fetch', fetch_mock);
-		const m = await call_llm('k', [{ role: 'user', content: 'q' }], false);
-		expect(m.content).toBe('hi');
-		const body = JSON.parse((fetch_mock.mock.calls[0][1] as RequestInit).body as string);
+		const r = await call_llm('k', [{ role: 'user', content: 'q' }], false);
+		expect(r.message.content).toBe('hi');
+		expect(r.usage?.prompt_tokens).toBe(1);
+		const body = JSON.parse((fetch_mock.mock.calls[0] as any)[1].body as string);
 		expect(body.model).toBe(MODEL);
 		expect(body.tool_choice).toBe('auto');
 		expect(body.tools).toHaveLength(TOOLS.length);
@@ -65,7 +69,7 @@ describe('call_llm', () => {
 		);
 		vi.stubGlobal('fetch', fetch_mock);
 		await call_llm('k', [], true);
-		const body = JSON.parse((fetch_mock.mock.calls[0][1] as RequestInit).body as string);
+		const body = JSON.parse((fetch_mock.mock.calls[0] as any)[1].body as string);
 		expect(body.tool_choice).toEqual({ type: 'function', function: { name: 'finish' } });
 	});
 	it('throws on http error', async () => {

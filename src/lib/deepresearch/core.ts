@@ -1,3 +1,5 @@
+import { BOOKS } from '$lib/books';
+
 export const MODEL = 'deepseek/deepseek-v4-flash';
 export const MAX_TURNS = 100;
 export const SEARCH_URL = 'https://ver.apexlinks.org/api/search';
@@ -14,7 +16,9 @@ export type Msg = {
 	tool_call_id?: string;
 };
 
-export const SYSTEM_PROMPT = `You are a deep Bible research agent. Your ONLY source of truth is the search_bible tool, which performs semantic search over the complete text of the Bible (Young's Literal Translation).
+export const SYSTEM_PROMPT = `When your research is complete, call the finish tool exactly once. Its answer must be self-contained Markdown: the full synthesis, every referenced passage cited as Book chapter:verse with the retrieved wording, and a clear line of reasoning from the texts to the conclusion.
+
+You are a deep Bible research agent. Your ONLY source of truth is the search_bible tool, which performs semantic search over the complete text of the Bible (Young's Literal Translation).
 
 First-principles rules:
 - Build every claim, connection and conclusion EXCLUSIVELY from verse and chapter text returned by search_bible during this session.
@@ -28,9 +32,7 @@ Method:
 - Research exhaustively and at length. Search many semantic angles per concept: synonyms, related motifs, imagery, both 'verses' and 'chapters' scope, book/chapter filters.
 - Deliberately search for counter-evidence to your working hypotheses and resolve tensions using retrieved text only.
 - Keep searching an angle until new queries stop returning new relevant passages, then pivot to another angle. Do not stop at the first plausible answer.
-- Aim for dozens of searches before finishing (up to roughly 90 in total).
-
-When your research is complete, call the finish tool exactly once. Its answer must be self-contained Markdown: the full synthesis, every referenced passage cited as Book chapter:verse with the retrieved wording, and a clear line of reasoning from the texts to the conclusion.`;
+- Aim for dozens of searches before finishing (up to roughly 90 in total).`;
 
 export const TOOLS = [
 	{
@@ -52,9 +54,9 @@ export const TOOLS = [
 						description: 'Search individual verses or whole chapters'
 					},
 					book: {
-						type: 'string',
+						type: 'integer',
 						description:
-							'Optional exact book name filter, e.g. "Genesis", "1 Samuel", "Song of Solomon"'
+							'Optional book filter as a number: 1=Genesis, 2=Exodus, …, 9=1 Samuel, 22=Song of Solomon, …, 66=Revelation'
 					},
 					chapter: {
 						type: 'integer',
@@ -100,14 +102,26 @@ export async function search_bible(args: Record<string, unknown>): Promise<unkno
 	const p = new URLSearchParams();
 	p.set('q', String(args.query ?? ''));
 	p.set(args.scope === 'chapters' ? 'c' : 'v', '');
-	if (args.book) p.set('b', String(args.book));
+	if (args.book) {
+		const raw = String(args.book);
+		const num = /^\d+$/.test(raw) ? raw : String(BOOKS.indexOf(raw) + 1);
+		p.set('b', num);
+	}
 	if (args.chapter != null && args.chapter !== '') p.set('x', String(args.chapter));
 	const res = await fetch(`${SEARCH_URL}?${p}`);
 	if (!res.ok) throw new Error(`search ${res.status}: ${(await res.text()).slice(0, 300)}`);
 	return res.json();
 }
 
-export async function call_llm(key: string, messages: Msg[], force_finish: boolean): Promise<Msg> {
+export type Usage = {
+	prompt_tokens: number;
+	completion_tokens: number;
+	prompt_tokens_details?: { cached_tokens?: number };
+};
+
+export type LlmResp = { message: Msg; usage?: Usage };
+
+export async function call_llm(key: string, messages: Msg[], force_finish: boolean): Promise<LlmResp> {
 	const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
 		method: 'POST',
 		headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -120,5 +134,6 @@ export async function call_llm(key: string, messages: Msg[], force_finish: boole
 		})
 	});
 	if (!res.ok) throw new Error(`llm ${res.status}: ${(await res.text()).slice(0, 300)}`);
-	return ((await res.json()) as { choices: { message: Msg }[] }).choices[0].message;
+	const j = (await res.json()) as { choices: { message: Msg }[]; usage?: Usage };
+	return { message: j.choices[0].message, usage: j.usage };
 }

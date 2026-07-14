@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
-	type O = { q: string; m: string };
+	type O = { q: string; m: string; c?: number; b?: number };
 	type T = { k: string; n: number; c: string };
 	let s = $state('');
 	let o = $state<O | null>(null);
@@ -115,8 +115,11 @@
 				</ul>
 			{/if}
 		{:else}
-			<section class="result">
+				<section class="result">
 				<div class="bar">
+					{#if o.c != null}
+						<span class="cost">Cost ₦{(o.c / 100).toFixed(2)} · Balance ₦{(o.b! / 100).toFixed(2)}</span>
+					{/if}
 					<button type="button" onclick={download}>Download .md</button>
 					<button type="button" class="ghost" onclick={() => goto('/deepresearch')}
 						>New research</button
@@ -135,7 +138,7 @@
 		padding: 4rem 1.25rem 5rem;
 	}
 	.hero {
-		text-align: center;
+		text-align: left;
 		margin-bottom: 2.5rem;
 	}
 	.kicker {
@@ -162,7 +165,7 @@
 		margin-top: 1rem;
 	}
 	.status {
-		text-align: center;
+		text-align: left;
 		margin-top: 2rem;
 	}
 	.question {
@@ -184,7 +187,7 @@
 		}
 	}
 	.msg {
-		text-align: center;
+		text-align: left;
 		color: #1d4ed8;
 		margin: 1.2rem 0;
 		font-size: 0.98rem;
@@ -192,7 +195,7 @@
 	.actions {
 		display: flex;
 		gap: 0.6rem;
-		justify-content: center;
+		justify-content: flex-start;
 		margin-top: 0.4rem;
 	}
 	.actions .ghost {
@@ -208,7 +211,7 @@
 		padding: 0;
 		text-align: left;
 		max-width: 38rem;
-		margin-inline: auto;
+		margin-inline: 0;
 		display: grid;
 		gap: 0.5rem;
 	}
@@ -256,7 +259,14 @@
 		display: flex;
 		gap: 0.6rem;
 		justify-content: flex-end;
+		align-items: center;
 		margin-bottom: 1.2rem;
+	}
+	.cost {
+		margin-right: auto;
+		font-size: 0.85rem;
+		color: #475569;
+		font-weight: 600;
 	}
 	.md {
 		background: #ffffff;
@@ -284,6 +294,31 @@
 		background: #eef2f9;
 		border-radius: 4px;
 		padding: 0.1rem 0.35rem;
+	}
+	.md :global(table) {
+		display: block;
+		width: 100%;
+		max-width: 100%;
+		overflow-x: auto;
+		border-collapse: collapse;
+		margin: 1.3rem 0;
+		font-size: 0.92rem;
+	}
+	.md :global(th),
+	.md :global(td) {
+		border: 1px solid #e4e9f2;
+		padding: 0.5rem 0.7rem;
+		text-align: left;
+		vertical-align: top;
+		line-height: 1.5;
+	}
+	.md :global(thead th) {
+		background: #f4f7fc;
+		color: #16233f;
+		font-weight: 600;
+	}
+	.md :global(tbody tr:nth-child(even)) {
+		background: #f7f9fc;
 	}
 	button {
 		height: 3rem;

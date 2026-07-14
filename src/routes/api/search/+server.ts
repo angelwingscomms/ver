@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { env } from '$env/dynamic/private';
+import { BOOKS } from '$lib/books';
 import type { RequestHandler } from './$types';
 
 const COLS = { chapters: 'bible', verses: 'verses' } as const;
@@ -69,7 +70,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	if (!query || !query.trim()) throw error(400, 'q required');
 	const v = await embed(query);
 	const f = { must: [] as any[] };
-	if (b) f.must.push({ key: 'b', match: { value: b } });
+	if (b) f.must.push({ key: 'b', match: { value: Number(b) } });
 	if (x != null && x !== '') f.must.push({ key: 'c', match: { value: Number(x) } });
 	console.error('[search] querying qdrant col=%s filter=%j', col, f);
 	let hits;
@@ -84,7 +85,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 	console.error('[search] qdrant returned %d hits', hits.length);
 	const r = hits.map((h) => ({
-		b: h.payload?.b,
+		b: BOOKS[(Number(h.payload?.b) || 1) - 1] ?? h.payload?.b,
 		c: h.payload?.c,
 		v: h.payload?.v,
 		t: h.payload?.t,

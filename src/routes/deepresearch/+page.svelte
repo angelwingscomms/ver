@@ -35,9 +35,17 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ q: q.trim() })
 			});
-			const d = (await r.json()) as { i?: string; l?: string; message?: string };
+			const d = (await r.json()) as { i?: string; l?: string; message?: string; error?: string };
+			if (r.status === 401) {
+				goto('/login');
+				return;
+			}
+			if (r.status === 402) {
+				msg = 'Insufficient tokens — please deposit from the menu.';
+				return;
+			}
 			if (!r.ok || !d.i) {
-				msg = d.message ?? 'failed to start';
+				msg = d.error ?? d.message ?? 'failed to start';
 				return;
 			}
 			goto(`/deepresearch/${d.i}?l=${encodeURIComponent(d.l ?? '')}&q=${encodeURIComponent(q.trim())}`);
@@ -127,7 +135,7 @@
 		padding: 4rem 1.25rem 5rem;
 	}
 	.hero {
-		text-align: center;
+		text-align: left;
 		margin-bottom: 2.5rem;
 	}
 	.kicker {
@@ -215,7 +223,7 @@
 		cursor: default;
 	}
 	.msg {
-		text-align: center;
+		text-align: left;
 		color: #1d4ed8;
 		margin: 1rem 0 0;
 		font-size: 0.98rem;
@@ -282,7 +290,7 @@
 		white-space: nowrap;
 	}
 	.empty {
-		text-align: center;
+		text-align: left;
 		color: #94a3b8;
 		margin-top: 1.5rem;
 	}
