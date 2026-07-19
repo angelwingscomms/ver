@@ -6,25 +6,27 @@ import {
 	type DurableObjectNamespace
 } from 'cloudflare:workers';
 import {
-	MAX_TURNS,
+	FREE_STEPS,
 	SYSTEM_PROMPT,
 	MODEL,
+	EMBEDDING_MODEL,
+	EMBEDDING_PRICE,
 	call_llm,
 	search_bible,
 	type Msg
 } from '../../src/lib/deepresearch/core';
 import { calc_cost, kobo } from '../../src/lib/server/pricing';
 import { deduct, get_balance } from '../../src/lib/server/token_balance';
+import type { WfClient } from '../../src/lib/server/dr';
 
-type WF = {
-	create(opts: { params: P }): Promise<{ id: string }>;
-	get(id: string): Promise<{
-		status(): Promise<{ status: string; output?: unknown; error?: unknown }>;
-		terminate(): Promise<void>;
-	}>;
+type T = {
+	step: string;
+	k: string;
+	n: number;
+	c: string;
+	cost?: number;
+	cost_kind?: 'llm' | 'search';
 };
-
-type T = { step: string; k: string; n: number; c: string };
 type E = {
 	OPENROUTER_KEY: { get(): Promise<string> };
 	QDRANT_URL: { get(): Promise<string> };
@@ -33,12 +35,12 @@ type E = {
 	NGN_USD?: string;
 	DR_LOG: DurableObjectNamespace;
 	DR_INDEX: DurableObjectNamespace;
-	DEEPRESEARCH_WF: WF;
+	DEEPRESEARCH_WF: WfClient;
 	INTERNAL_TOKEN: string;
 };
 
-type R = { i: string; q: string; l: string; c: number; s?: string };
-type P = { q: string; log_id: string; user_id: string; budget_kobo: number };
+type R = { i: string; q: string; l: string; c: number; s?: string; n?: number };
+type P = { q: string; l: string; u: string; b: number; n?: number };
 
 function check_auth(req: Request, env: E): Response | null {
 	if (req.headers.get('authorization') !== `Bearer ${env.INTERNAL_TOKEN}`)
@@ -71,18 +73,31 @@ function thoughts_from_msg(m: Msg): { k: string; c: string }[] {
 	return out;
 }
 
-async function log_think(env: E, log_id: string, step: string, k: string, n: number, c: string) {
+async function log_think(
+	env: E,
+	log_id: string,
+	step: string,
+	k: string,
+	n: number,
+	c: string,
+	cost?: number,
+	cost_kind?: 'llm' | 'search'
+) {
 	const id = env.DR_LOG.idFromName(log_id);
 	await env.DR_LOG.get(id).fetch('https://do/append', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ step, k, n, c } satisfies T)
+		body: JSON.stringify({ step, k, n, c, cost, cost_kind } satisfies T)
 	});
 }
 
-async function record_thoughts(env: E, log_id: string, t: number, m: Msg) {
-	for (const th of thoughts_from_msg(m))
-		await log_think(env, log_id, `llm-${t}-${th.k}`, th.k, t, th.c);
+function fmt_usd(n: number): string {
+	return `$${n.toFixed(6)}`;
+}
+
+function search_cost_from_usage(usage?: { prompt_tokens: number }): number {
+	if (!usage) return 0;
+	return (usage.prompt_tokens / 1e6) * EMBEDDING_PRICE;
 }
 
 export class DrLog {
@@ -110,7 +125,8 @@ export class DrLog {
 
 export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 	async run(event: WorkflowEvent<P>, step: WorkflowStep) {
-		const { q, log_id, user_id, budget_kobo } = event.payload;
+		const { q, l, u, b, n } = event.payload;
+		const steps = Math.max(1, Math.floor(n ?? FREE_STEPS));
 		const key = await this.env.OPENROUTER_KEY.get();
 		const token_rate = Number(this.env.TOKEN_RATE) || 1.08;
 		const ngn_usd = Number(this.env.NGN_USD) || 1440;
@@ -119,17 +135,26 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			{ role: 'user', content: q }
 		];
 		let answer = '';
-		let cost_kobo = 0;
-		for (let t = 0; t < MAX_TURNS && !answer; t++) {
-			const force_finish = t === MAX_TURNS - 1 || cost_kobo >= budget_kobo;
+		let billable = 0;
+		let used = 0;
+		let llm_cost = 0;
+		let search_cost = 0;
+		for (let t = 0; t < steps && !answer; t++) {
+			used = t + 1;
+			const force_finish = t === steps - 1 || (b > 0 && billable >= b);
 			const { message: m, usage } = await step.do(`llm-${t}`, RETRY, async () => {
 				const resp = await call_llm(key, messages, force_finish);
-				await record_thoughts(this.env, log_id, t, resp.message);
+				const step_cost = usage?.total_cost ?? (usage
+					? calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, usage.prompt_tokens_details?.cached_tokens ?? 0)
+					: 0);
+				if (step_cost > 0) llm_cost += step_cost;
+				for (const th of thoughts_from_msg(resp.message))
+					await log_think(this.env, l, `llm-${t}-${th.k}`, th.k, t, th.c, step_cost, 'llm');
 				return resp;
 			});
-			if (usage) {
+			if (usage && t >= FREE_STEPS) {
 				const cache = usage.prompt_tokens_details?.cached_tokens ?? 0;
-				cost_kobo += kobo(
+				billable += kobo(
 					calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, cache),
 					token_rate,
 					ngn_usd
@@ -165,18 +190,17 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 				}
 				const r = await step.do(`search-${t}-${c.id}`, RETRY, async () => {
 					const res = await search_bible(args);
-					const arr = Array.isArray(res)
-						? res
-						: Array.isArray((res as { r?: unknown[] }).r)
-							? (res as { r: unknown[] }).r
-							: [];
+					const s_cost = search_cost_from_usage(res.usage);
+					if (s_cost > 0) search_cost += s_cost;
 					await log_think(
 						this.env,
-						log_id,
+						l,
 						`search-${t}-${c.id}`,
 						'verses',
 						t,
-						`Retrieved ${arr.length} passage${arr.length === 1 ? '' : 's'}`
+						`Retrieved ${res.r.length} passage${res.r.length === 1 ? '' : 's'}`,
+						s_cost,
+						'search'
 					);
 					return res;
 				});
@@ -187,17 +211,41 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			answer =
 				[...messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ??
 				'No answer produced.';
-		const spent = Math.min(cost_kobo, budget_kobo);
+		const spent = Math.min(billable, b);
 		let bal = 0;
-		if (user_id) {
+		if (u) {
 			try {
-				bal =
-					spent > 0 ? await deduct(this.env, user_id, spent) : await get_balance(this.env, user_id);
+				bal = spent > 0 ? await deduct(this.env, u, spent) : await get_balance(this.env, u);
 			} catch {
 				/* balance update best-effort */
 			}
 		}
-		return { q, m: `# question\n\n${q}\n\n# answer\n\n${answer}`, c: spent, b: bal };
+		try {
+			const idx = this.env.DR_INDEX.idFromName('index');
+			await this.env.DR_INDEX.get(idx).fetch('https://do/steps', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ i: event.instanceId, n: used })
+			});
+		} catch {
+			/* steps-used persistence best-effort */
+		}
+		const total_cost = llm_cost + search_cost;
+		const cost_block =
+			`\n\n---\n\n# research cost\n\n` +
+			`- **LLM cost** (OpenRouter ${MODEL}): ${fmt_usd(llm_cost)}\n` +
+			`- **Search cost** (embeddings ${EMBEDDING_MODEL}): ${fmt_usd(search_cost)}\n` +
+			`- **Total research cost**: ${fmt_usd(total_cost)}\n`;
+		return {
+			q,
+			m: `# question\n\n${q}\n\n# answer\n\n${answer}${cost_block}`,
+			c: spent,
+			b: bal,
+			n: used,
+			llm_cost,
+			search_cost,
+			total_cost
+		};
 	}
 }
 
@@ -208,6 +256,12 @@ export class DrIndex {
 		if (req.method === 'POST' && u.pathname === '/add') {
 			const r = (await req.json()) as R;
 			await this.state.storage.put(r.i, { i: r.i, q: r.q, l: r.l, c: r.c });
+			return new Response('ok');
+		}
+		if (req.method === 'POST' && u.pathname === '/steps') {
+			const { i, n } = (await req.json()) as { i: string; n: number };
+			const rec = (await this.state.storage.get(i)) as R | undefined;
+			if (rec) await this.state.storage.put(i, { ...rec, n });
 			return new Response('ok');
 		}
 		if (u.pathname === '/list') {
@@ -224,9 +278,9 @@ export class DrIndex {
 export default {
 	async fetch(req: Request, env: E): Promise<Response> {
 		const u = new URL(req.url);
+		const deny = check_auth(req, env);
+		if (deny) return deny;
 		if (u.pathname === '/list') {
-			const deny = check_auth(req, env);
-			if (deny) return deny;
 			const idx = env.DR_INDEX.idFromName('index');
 			const raw = await env.DR_INDEX.get(idx).fetch('https://do/list');
 			const recs = (await raw.json()) as { r: R[] };
@@ -243,22 +297,21 @@ export default {
 			});
 		}
 		if (req.method === 'POST' && u.pathname === '/create') {
-			const deny = check_auth(req, env);
-			if (deny) return deny;
-			const { q, log_id, user_id, budget_kobo } = (await req.json()) as {
+			const { q, l, u, b, n } = (await req.json()) as {
 				q: string;
-				log_id: string;
-				user_id?: string;
-				budget_kobo?: number;
+				l: string;
+				u?: string;
+				b?: number;
+				n?: number;
 			};
 			const inst = await env.DEEPRESEARCH_WF.create({
-				params: { q, log_id, user_id: user_id ?? '', budget_kobo: budget_kobo ?? 0 }
+				params: { q, l, u: u ?? '', b: b ?? 0, n: n ?? FREE_STEPS }
 			});
 			const idx = env.DR_INDEX.idFromName('index');
 			await env.DR_INDEX.get(idx).fetch('https://do/add', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ i: inst.id, q, l: log_id, c: Date.now() })
+				body: JSON.stringify({ i: inst.id, q, l, c: Date.now() })
 			});
 			return new Response(JSON.stringify({ id: inst.id }), {
 				headers: { 'content-type': 'application/json' }
@@ -266,15 +319,11 @@ export default {
 		}
 		const m = u.pathname.match(/^\/thoughts\/([^/]+)$/);
 		if (m) {
-			const deny = check_auth(req, env);
-			if (deny) return deny;
 			const id = env.DR_LOG.idFromName(m[1]);
 			return env.DR_LOG.get(id).fetch('https://do/thoughts');
 		}
 		const tm = u.pathname.match(/^\/terminate\/([^/]+)$/);
 		if (tm) {
-			const deny = check_auth(req, env);
-			if (deny) return deny;
 			try {
 				await env.DEEPRESEARCH_WF.get(tm[1]).terminate();
 				return new Response(JSON.stringify({ ok: true }), {
@@ -289,8 +338,6 @@ export default {
 		}
 		const sm = u.pathname.match(/^\/status\/([^/]+)$/);
 		if (sm) {
-			const deny = check_auth(req, env);
-			if (deny) return deny;
 			const l = u.searchParams.get('l') ?? '';
 			try {
 				const inst = await env.DEEPRESEARCH_WF.get(sm[1]);

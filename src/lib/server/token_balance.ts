@@ -4,8 +4,6 @@ export type TBEnv = { QDRANT_URL: SecretVal; QDRANT_KEY: SecretVal };
 
 const DAILY_AMOUNT = 5400;
 const DAY_S = 86400;
-const local = new Map<string, number>();
-const local_daily = new Map<string, number>();
 let q_url = '';
 let q_key = '';
 
@@ -29,25 +27,19 @@ async function cl(env: TBEnv) {
 
 async function read_user(env: TBEnv, user_id: string): Promise<{ bal: number; daily: number }> {
 	const pid = await id_to_uuid(user_id);
-	try {
-		const r = await (await cl(env)).retrieve(C, { ids: [pid] });
-		const p = r[0]?.payload;
-		return { bal: (p?.t as number) || 0, daily: (p?.d as number) || 0 };
-	} catch {
-		return { bal: local.get(user_id) || 0, daily: local_daily.get(user_id) || 0 };
-	}
+	const r = await (await cl(env)).retrieve(C, { ids: [pid] });
+	const p = r[0]?.payload;
+	return { bal: (p?.t as number) || 0, daily: (p?.d as number) || 0 };
 }
 
 async function write_user(env: TBEnv, user_id: string, bal: number, daily: number): Promise<void> {
 	const pid = await id_to_uuid(user_id);
-	local.set(user_id, bal);
-	local_daily.set(user_id, daily);
 	try {
 		await (await cl(env)).upsert(C, {
 			points: [{ id: pid, vector: ZV, payload: { t: bal, u: user_id, d: daily } }]
 		});
 	} catch {
-		/* local map already updated */
+		/* best-effort */
 	}
 }
 
@@ -87,13 +79,8 @@ async function mark_used(env: TBEnv, ref: string, user_id: string, amount: numbe
 	}
 }
 
-export async function credit(
-	env: TBEnv,
-	user_id: string,
-	amount_kobo: number,
-	ref?: string
-): Promise<number> {
-	if (ref && (await is_used(env, ref))) return read_user(env, user_id).then((x) => x.bal);
+export async function credit(env: TBEnv, user_id: string, amount_kobo: number, ref?: string): Promise<number> {
+	if (ref && (await is_used(env, ref))) return (await read_user(env, user_id)).bal;
 	const t = Math.floor(amount_kobo);
 	const { bal, daily } = await read_user(env, user_id);
 	const n = bal + t;

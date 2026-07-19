@@ -223,7 +223,8 @@
 			box-shadow 0.18s ease;
 	}
 	.toggle button:hover:not(.on) {
-		color: #1e40af;
+		color: #000;
+		background: transparent;
 	}
 	.toggle button.on {
 		color: #fff;

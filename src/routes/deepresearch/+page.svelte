@@ -1,66 +1,124 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	import { loadKey, listResearch, type ResearchState } from '$lib/deepresearch/sw-db';
 	import '$lib/deepresearch/dr.css';
+	import { FREE_SEARCHES } from '$lib/deepresearch/core';
 
-	type R = { i: string; q: string; l: string; c: number; s: string };
-	let items = $state<R[]>([]);
+	let items = $state<ResearchState[]>([]);
 	let q = $state('');
+	let maxSearches = $state(FREE_SEARCHES);
+	let maxRetries = $state(9);
 	let starting = $state(false);
 	let msg = $state('');
-	let timer: ReturnType<typeof setInterval> | undefined;
-
-	async function load() {
-		try {
-			const r = await fetch('/api/deepresearch');
-			if (r.ok) items = ((await r.json()) as { r: R[] }).r;
-		} catch {
-			/* keep last list */
-		}
-	}
+	let hasKey = $state(false);
 
 	$effect(() => {
+		if (!browser) return;
+		loadKey().then((k) => (hasKey = !!k));
 		load();
-		timer = setInterval(load, 5000);
-		return () => {
-			if (timer) clearInterval(timer);
-		};
 	});
 
+	async function load() {
+		const sw = await swReady();
+		if (!sw) {
+			msg = 'Service Worker not available';
+			return;
+		}
+		const all = await listResearch();
+		all.sort((a, b) => b.createdAt - a.createdAt);
+		items = all.map((r) =>
+			r.status === 'running' && Date.now() - r.updatedAt > 30_000
+				? { ...r, status: 'paused' as const }
+				: r
+		);
+	}
+
+	function swReady(): Promise<boolean> {
+		return new Promise((res) => {
+			if (!('serviceWorker' in navigator)) {
+				console.warn('[dr] serviceWorker not in navigator');
+				return res(false);
+			}
+			navigator.serviceWorker.ready
+				.then(() => {
+					console.log('[dr] swReady: serviceWorker.ready resolved');
+					res(true);
+				})
+				.catch((e) => {
+					console.error('[dr] swReady: serviceWorker.ready rejected:', e);
+					res(false);
+				});
+		});
+	}
+
+	function postMsg(data: Record<string, unknown>): Promise<void> {
+		console.log('[dr:postMsg] waiting for active SW…');
+		return new Promise((res, rej) => {
+			let done = false;
+			const ix = setInterval(async () => {
+				const reg = await navigator.serviceWorker.ready;
+				if (reg.active && !done) {
+					done = true;
+					clearInterval(ix);
+					console.log('[dr:postMsg] SW active, posting message type=%s', (data as any).type);
+					reg.active.postMessage(data);
+					res();
+				} else if (!done) {
+					console.log('[dr:postMsg] reg.active is null, polling…');
+				}
+			}, 200);
+			setTimeout(() => {
+				if (done) return;
+				done = true;
+				clearInterval(ix);
+				console.error('[dr:postMsg] TIMEOUT after 10s — SW never became active');
+				rej(new Error('SW never became active within 10s'));
+			}, 10_000);
+		});
+	}
+
 	async function start() {
+		console.log('[dr:start] called, q=%s, starting=%s, hasKey=%s', q.trim(), starting, hasKey);
 		if (!q.trim() || starting) return;
+		if (!hasKey) {
+			console.log('[dr:start] no key, redirecting to /settings');
+			goto('/settings');
+			return;
+		}
 		starting = true;
 		msg = '';
 		try {
-			const r = await fetch('/api/deepresearch', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ q: q.trim() })
+			const key = await loadKey();
+			console.log('[dr:start] loadKey returned', key ? `key=${key.slice(0, 8)}…` : 'undefined');
+			if (!key) {
+				msg = 'Set your OpenRouter API key in settings first.';
+				return;
+			}
+			const id = crypto.randomUUID();
+			console.log('[dr:start] generated id=%s, calling postMsg…', id);
+			console.log('[dr:start] payload', { id, maxSearches: Math.max(1, maxSearches), maxRetries: Math.max(0, maxRetries) });
+			await postMsg({
+				type: 'start-research',
+				id,
+				question: q.trim(),
+				maxSearches: Math.max(1, maxSearches),
+				maxRetries: Math.max(0, maxRetries),
+				key
 			});
-			const d = (await r.json()) as { i?: string; l?: string; message?: string; error?: string };
-			if (r.status === 401) {
-				goto('/login');
-				return;
-			}
-			if (r.status === 402) {
-				msg = 'Insufficient tokens — please deposit from the menu.';
-				return;
-			}
-			if (!r.ok || !d.i) {
-				msg = d.error ?? d.message ?? 'failed to start';
-				return;
-			}
-			goto(
-				`/deepresearch/${d.i}?l=${encodeURIComponent(d.l ?? '')}&q=${encodeURIComponent(q.trim())}`
-			);
-		} catch {
-			msg = 'failed to start';
+			console.log('[dr:start] postMsg resolved, navigating to detail page');
+			goto(`/deepresearch/${id}?q=${encodeURIComponent(q.trim())}`);
+		} catch (e) {
+			console.error('[dr:start] caught error:', e);
+			msg = `failed to start: ${String(e)}`;
 		} finally {
 			starting = false;
+			console.log('[dr:start] finally, starting=%s', starting);
 		}
 	}
 
-	function ago(c: number): string {
-		const s = Math.floor((Date.now() - c) / 1000);
+	function ago(ts: number): string {
+		const s = Math.floor((Date.now() - ts) / 1000);
 		if (s < 60) return `${s}s ago`;
 		if (s < 3600) return `${Math.floor(s / 60)}m ago`;
 		if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
@@ -68,7 +126,7 @@
 	}
 
 	function badge(s: string): string {
-		return s === 'complete' ? 'done' : s === 'errored' || s === 'terminated' ? 'err' : 'run';
+		return s === 'complete' ? 'done' : s === 'error' ? 'err' : s === 'paused' ? 'paused' : 'run';
 	}
 </script>
 
@@ -107,22 +165,41 @@
 					start();
 				}
 			}}></textarea>
-		<button type="submit" disabled={starting}>{starting ? 'Starting…' : 'Start research'}</button>
+		<div class="row">
+			<label class="steps">
+				Max searches
+				<input type="number" min="1" bind:value={maxSearches} aria-label="Max searches" />
+			</label>
+			<label class="steps">
+				Retries
+				<input type="number" min="0" max="99" bind:value={maxRetries} aria-label="Max retries" />
+			</label>
+			<button type="submit" disabled={starting}>{starting ? 'Starting…' : 'Start research'}</button>
+		</div>
+		<p class="hint">
+			First {FREE_SEARCHES} searches free{hasKey ? '. The model decides how many thinking turns to use.' : '; '}
+			{hasKey ? '' : 'set your OpenRouter key in '}
+			<a href="/settings">settings</a>
+			{hasKey ? '' : ' to start.'}
+		</p>
 	</form>
 	{#if msg}
 		<p class="msg">{msg}</p>
 	{/if}
 
 	<section class="list">
-		{#each items as r (r.i)}
+		{#each items as r (r.id)}
 			<a
 				class="item"
-				href={`/deepresearch/${r.i}?l=${encodeURIComponent(r.l)}&q=${encodeURIComponent(r.q)}`}
+				href={`/deepresearch/${r.id}?q=${encodeURIComponent(r.question)}`}
 			>
-				<span class="q">{r.q}</span>
+				<span class="q">{r.question}</span>
 				<span class="meta">
-					<span class={`badge ${badge(r.s)}`}>{r.s}</span>
-					<span class="time">{ago(r.c)}</span>
+					{#if r.searchesUsed}
+						<span class="time">{r.searchesUsed}/{r.maxSearches} searches</span>
+					{/if}
+					<span class={`badge ${badge(r.status)}`}>{r.status}</span>
+					<span class="time">{ago(r.createdAt)}</span>
 				</span>
 			</a>
 		{:else}
@@ -146,20 +223,13 @@
 		padding: 0.7rem;
 		border: 1px solid #dbe3f0;
 		border-radius: 14px;
-		box-shadow:
-			0 1px 2px rgba(22, 35, 63, 0.04),
-			0 12px 30px -18px rgba(22, 35, 63, 0.25);
+		box-shadow: 0 1px 2px rgba(22, 35, 63, 0.04), 0 12px 30px -18px rgba(22, 35, 63, 0.25);
 	}
 	textarea {
 		width: 100%;
 		padding: 0.8rem 0.9rem;
 		font-size: 1rem;
-		font-family:
-			system-ui,
-			-apple-system,
-			'Segoe UI',
-			Roboto,
-			sans-serif;
+		font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 		color: #16233f;
 		background: #f4f7fc;
 		border: 1px solid #dbe3f0;
@@ -171,6 +241,39 @@
 		background: #fff;
 		border-color: #2563eb;
 		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.6rem;
+	}
+	.steps {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+		color: #475569;
+	}
+	.steps input {
+		width: 5rem;
+		padding: 0.5rem 0.6rem;
+		font-size: 1rem;
+		color: #16233f;
+		background: #f4f7fc;
+		border: 1px solid #dbe3f0;
+		border-radius: 9px;
+	}
+	.steps input:focus {
+		outline: none;
+		background: #fff;
+		border-color: #2563eb;
+		box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+	}
+	.hint {
+		margin: 0;
+		font-size: 0.82rem;
+		color: #94a3b8;
 	}
 	.list {
 		margin-top: 2rem;
@@ -187,10 +290,7 @@
 		background: #fff;
 		border: 1px solid #e4e9f2;
 		border-radius: 12px;
-		transition:
-			border-color 0.15s ease,
-			box-shadow 0.15s ease,
-			transform 0.15s ease;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 	}
 	.msg {
 		text-align: left;
@@ -233,6 +333,9 @@
 	}
 	.badge.err {
 		background: #dc2626;
+	}
+	.badge.paused {
+		background: #d97706;
 	}
 	.time {
 		font-size: 0.78rem;

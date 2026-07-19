@@ -19,12 +19,8 @@ export interface PaystackVerifyResult {
 }
 
 export function get_secret_key(): string {
-	const paystack_test = env.PAYSTACK_TEST;
-	const is_test = paystack_test !== undefined && paystack_test !== null ? paystack_test === '.' : dev;
-	const key = is_test
-		? env.PAYSTACK_SECRET_KEY_TEST || env.PAYSTACK_SECRET_KEY
-		: env.PAYSTACK_SECRET_KEY_LIVE || env.PAYSTACK_SECRET_KEY;
-	return key || '';
+	const is_test = env.PAYSTACK_TEST !== undefined ? env.PAYSTACK_TEST === '.' : dev;
+	return (is_test ? env.PAYSTACK_SECRET_KEY_TEST : env.PAYSTACK_SECRET_KEY_LIVE) || env.PAYSTACK_SECRET_KEY || '';
 }
 
 export async function paystack_init(

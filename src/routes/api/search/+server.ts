@@ -1,17 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { env } from '$env/dynamic/private';
+import { get_secret } from '$lib/server/qdrant';
 import { BOOKS } from '$lib/books';
 import type { RequestHandler } from './$types';
 
 const COLS = { chapters: 'bible', verses: 'verses' } as const;
-
-type SecretVal = string | { get?: () => Promise<string> } | undefined;
-async function get_secret(v: SecretVal): Promise<string> {
-	if (v && typeof (v as { get?: unknown }).get === 'function')
-		return await (v as { get: () => Promise<string> }).get();
-	return (v as string) ?? '';
-}
 
 let q: QdrantClient | null = null;
 async function client() {
@@ -23,7 +17,7 @@ async function client() {
 	return q;
 }
 
-async function embed(text: string): Promise<number[]> {
+async function embed(text: string): Promise<{ embedding: number[]; usage?: { prompt_tokens: number } }> {
 	const key = await get_secret(env.OPENROUTER_KEY);
 	console.error('[embed] calling openrouter for', text.slice(0, 80));
 	console.error('[embed] key:', `${key.slice(0, 8)}…(${key.length} chars)`);
@@ -53,9 +47,10 @@ async function embed(text: string): Promise<number[]> {
 		console.error('[embed] non-ok body:', body.slice(0, 300));
 		throw error(502, `embed failed: ${r.status} ${body.slice(0, 200)}`);
 	}
-	const d = (await r.json()) as { data: { embedding: number[] }[] };
+	const d = (await r.json()) as { data: { embedding: number[] }[]; usage?: { prompt_tokens: number } };
 	console.error('[embed] ok, embedding length:', d.data[0].embedding.length);
-	return d.data[0].embedding;
+	if (d.usage) console.error('[embed] usage:', d.usage);
+	return { embedding: d.data[0].embedding, usage: d.usage };
 }
 
 export const GET: RequestHandler = async ({ url }) => {
@@ -68,7 +63,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		throw error(400, 'ambiguous scope: pass exactly one of ?c (chapters) or ?v (verses), not both');
 	const col = has_c ? COLS.chapters : COLS.verses;
 	if (!query || !query.trim()) throw error(400, 'q required');
-	const v = await embed(query);
+	const { embedding, usage } = await embed(query);
 	const f = { must: [] as any[] };
 	if (b) f.must.push({ key: 'b', match: { value: Number(b) } });
 	if (x != null && x !== '') f.must.push({ key: 'c', match: { value: Number(x) } });
@@ -77,7 +72,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	try {
 		hits = await (
 			await client()
-		).search(col, { vector: v, limit: 10, filter: f.must.length ? f : undefined });
+		).search(col, { vector: embedding, limit: 10, filter: f.must.length ? f : undefined });
 	} catch (e: unknown) {
 		const msg = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
 		console.error('[search] qdrant threw:', msg);
@@ -91,5 +86,5 @@ export const GET: RequestHandler = async ({ url }) => {
 		t: h.payload?.t,
 		s: h.score
 	}));
-	return json({ r });
+	return json({ r, usage });
 };

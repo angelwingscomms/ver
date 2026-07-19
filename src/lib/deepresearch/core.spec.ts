@@ -38,6 +38,15 @@ describe('search_bible', () => {
 		);
 		await expect(search_bible({ query: 'x', scope: 'verses' })).rejects.toThrow('search 500');
 	});
+	it('returns a normalized {r: unknown[]} shape', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(JSON.stringify({ r: [{ t: 'x' }] })))
+		);
+		const r = (await search_bible({ query: 'x', scope: 'verses' })) as { r: unknown[] };
+		expect(Array.isArray(r.r)).toBe(true);
+		expect(r.r).toHaveLength(1);
+	});
 });
 
 describe('call_llm', () => {

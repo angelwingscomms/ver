@@ -4,8 +4,6 @@ import { hash_pw, verify_pw } from './pw';
 
 export type UEnv = { QDRANT_URL: SecretVal; QDRANT_KEY: SecretVal };
 
-const local = new Map<string, User>();
-
 function pid(id: string): string {
 	return 'u_' + id;
 }
@@ -22,8 +20,6 @@ export async function save_user(
 	const c = await get_user(env, id);
 	if (c) {
 		u.d = c.d;
-		if (c.c) u.c = c.c;
-		if (c.r) u.r = c.r;
 		if (c.h) u.h = c.h;
 		if (c.o) u.o = c.o;
 	}
@@ -32,7 +28,7 @@ export async function save_user(
 			await client(await get_secret(env.QDRANT_URL), await get_secret(env.QDRANT_KEY))
 		).upsert(C, { points: [{ id: pid(id), vector: ZV, payload: u as unknown as Record<string, unknown> }] });
 	} catch {
-		local.set(pid(id), u);
+		/* best-effort */
 	}
 }
 
@@ -48,8 +44,6 @@ export async function get_user(env: UEnv, id: string): Promise<User | null> {
 				n: u.n as string,
 				p: u.p as string | undefined,
 				m: u.m as string | undefined,
-				c: u.c as string | undefined,
-				r: u.r as string[] | undefined,
 				d: u.d as number,
 				o: u.o as 'google' | 'local' | undefined,
 				h: u.h as string | undefined
@@ -57,7 +51,7 @@ export async function get_user(env: UEnv, id: string): Promise<User | null> {
 		}
 		return null;
 	} catch {
-		return local.get(pid(id)) || null;
+		return null;
 	}
 }
 
@@ -71,7 +65,7 @@ export async function create_pw_user(env: UEnv, email: string, password: string)
 			await client(await get_secret(env.QDRANT_URL), await get_secret(env.QDRANT_KEY))
 		).upsert(C, { points: [{ id: pid(email), vector: ZV, payload: u as unknown as Record<string, unknown> }] });
 	} catch {
-		local.set(pid(email), u);
+		/* best-effort */
 	}
 }
 

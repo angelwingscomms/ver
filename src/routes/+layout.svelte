@@ -3,6 +3,13 @@
 	import { browser } from '$app/environment';
 
 	let { data, children } = $props();
+
+	$effect(() => {
+		if (!browser) return;
+		if ('Notification' in window && Notification.permission === 'default') {
+			Notification.requestPermission();
+		}
+	});
 	let user = $state<{ id: string; name: string; picture?: string; email?: string } | null>(data.user);
 	let balance = $state(data.balance);
 	let show_dep = $state(false);
@@ -109,8 +116,10 @@
 			{#if user}
 				<a class="bal" href="/deepresearch">₦{(balance / 100).toFixed(2)}</a>
 				<button class="btn ghost" onclick={() => (show_dep = true)}>Deposit</button>
+				<a class="btn ghost" href="/settings">Settings</a>
 				<button class="btn ghost" onclick={logout}>Logout</button>
 			{:else}
+				<a class="btn ghost" href="/settings">Settings</a>
 				<a class="btn" href="/login">Login</a>
 			{/if}
 		</div>
