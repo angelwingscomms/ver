@@ -1,6 +1,6 @@
-import json, os, re, time, requests
+import json, os, re, time, uuid, requests
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType
+from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType, Filter, FieldCondition, MatchValue
 
 env = {}
 with open(os.path.expanduser('~/i/e4/.env')) as f:
@@ -12,11 +12,12 @@ with open(os.path.expanduser('~/i/e4/.env')) as f:
 
 QDRANT_URL = env['QDRANT_URL']
 QDRANT_KEY = env['QDRANT_KEY']
-OR_KEY = env['OPENROUTER_KEY']
-MODEL = 'qwen/qwen3-embedding-8b'
+VOXELL_KEY = env['VOXELL_KEY']
+MODEL = 'jcorners/ingot-8b-r3'
 COLLECTION = 'verses'
-TENANT = 'ylt'
+TENANT = 'ylt2'
 BATCH = 1000
+NS = uuid.UUID('11111111-2222-3333-4444-555555555555')
 
 qc = QdrantClient(url=QDRANT_URL, api_key=QDRANT_KEY, timeout=600, prefer_grpc=True)
 if not qc.collection_exists(COLLECTION):
@@ -35,7 +36,8 @@ for bk in d['books']:
             recs.append((bk['name'], v['chapter'], v['verse'], text))
 print('total verses:', len(recs))
 
-done = qc.count(COLLECTION).count
+tenant_filter = Filter(must=[FieldCondition(key='s', match=MatchValue(value=TENANT))])
+done = qc.count(COLLECTION, count_filter=tenant_filter).count
 recs = recs[done:]
 n = done
 print('resuming from', done, '| remaining', len(recs))
@@ -44,8 +46,8 @@ print('resuming from', done, '| remaining', len(recs))
 def embed(texts):
     for attempt in range(4):
         try:
-            r = requests.post('https://openrouter.ai/api/v1/embeddings',
-                              headers={'Authorization': f'Bearer {OR_KEY}', 'Content-Type': 'application/json'},
+            r = requests.post('https://api.voxell.ai/v1/embeddings',
+                              headers={'Authorization': f'Bearer {VOXELL_KEY}', 'Content-Type': 'application/json'},
                               json={'model': MODEL, 'input': texts}, timeout=120)
             r.raise_for_status()
             data = r.json()['data']
@@ -61,7 +63,7 @@ idx = 0
 while idx < len(recs):
     chunk = recs[idx:idx + BATCH]
     vecs = embed([c[3] for c in chunk])
-    ids = list(range(n + 1, n + 1 + len(chunk)))
+    ids = [str(uuid.uuid5(NS, f'{TENANT}:{b}:{c}:{v}')) for b, c, v, _ in chunk]
     pts = [PointStruct(id=ids[j], vector=vecs[j],
             payload={'s': TENANT, 'b': chunk[j][0], 'c': chunk[j][1], 'v': chunk[j][2], 't': chunk[j][3]})
            for j in range(len(chunk))]
@@ -82,4 +84,4 @@ while idx < len(recs):
     if n % 500 == 0 or idx >= len(recs):
         print(f'upserted {n}/{len(recs) + done}')
 
-print('DONE. points:', qc.count(COLLECTION).count)
+print('DONE. tenant points:', qc.count(COLLECTION, count_filter=tenant_filter).count)

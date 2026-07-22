@@ -2,7 +2,6 @@ import { json, error } from '@sveltejs/kit';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { env } from '$env/dynamic/private';
 import { get_secret } from '$lib/server/qdrant';
-import { BOOKS } from '$lib/books';
 import type { RequestHandler } from './$types';
 
 const COLS = { chapters: 'bible', verses: 'verses' } as const;
@@ -17,19 +16,21 @@ async function client() {
 	return q;
 }
 
+const TENANT = 'ylt2';
+
 async function embed(text: string): Promise<{ embedding: number[]; usage?: { prompt_tokens: number } }> {
-	const key = await get_secret(env.OPENROUTER_KEY);
-	console.error('[embed] calling openrouter for', text.slice(0, 80));
+	const key = await get_secret(env.VOXELL_KEY);
+	console.error('[embed] calling voxell for', text.slice(0, 80));
 	console.error('[embed] key:', `${key.slice(0, 8)}…(${key.length} chars)`);
 	let r: Response;
 	try {
-		r = await fetch('https://openrouter.ai/api/v1/embeddings', {
+		r = await fetch('https://api.voxell.ai/v1/embeddings', {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${key}`,
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify({ model: 'qwen/qwen3-embedding-8b', input: text })
+			body: JSON.stringify({ model: 'jcorners/ingot-8b-r3', input: text })
 		});
 	} catch (e: unknown) {
 		const err = e instanceof Error ? e : new Error(String(e));
@@ -64,8 +65,8 @@ export const GET: RequestHandler = async ({ url }) => {
 	const col = has_c ? COLS.chapters : COLS.verses;
 	if (!query || !query.trim()) throw error(400, 'q required');
 	const { embedding, usage } = await embed(query);
-	const f = { must: [] as any[] };
-	if (b) f.must.push({ key: 'b', match: { value: Number(b) } });
+	const f = { must: [{ key: 's', match: { value: TENANT } }] as any[] };
+	if (b) f.must.push({ key: 'b', match: { value: b } });
 	if (x != null && x !== '') f.must.push({ key: 'c', match: { value: Number(x) } });
 	console.error('[search] querying qdrant col=%s filter=%j', col, f);
 	let hits;
@@ -80,7 +81,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 	console.error('[search] qdrant returned %d hits', hits.length);
 	const r = hits.map((h) => ({
-		b: BOOKS[(Number(h.payload?.b) || 1) - 1] ?? h.payload?.b,
+		b: h.payload?.b,
 		c: h.payload?.c,
 		v: h.payload?.v,
 		t: h.payload?.t,

@@ -25,6 +25,11 @@
 			"secret_name": "OPENROUTER_KEY"
 		},
 		{
+			"binding": "VOXELL_KEY",
+			"store_id": "45748cb1c67946df943075fa14cb8815",
+			"secret_name": "VOXELL_KEY"
+		},
+		{
 			"binding": "SECRET",
 			"store_id": "45748cb1c67946df943075fa14cb8815",
 			"secret_name": "SECRET"
