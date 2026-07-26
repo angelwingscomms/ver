@@ -143,7 +143,7 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			used = t + 1;
 			const force_finish = t === steps - 1 || (b > 0 && billable >= b);
 			const { message: m, usage } = await step.do(`llm-${t}`, RETRY, async () => {
-				const resp = await call_llm(key, messages, force_finish);
+				const resp = await call_llm(key, messages, 'openrouter', MODEL, force_finish);
 				const step_cost = usage?.total_cost ?? (usage
 					? calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, usage.prompt_tokens_details?.cached_tokens ?? 0)
 					: 0);

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { marked } from 'marked';
-	import { loadResearch, loadKey, type ResearchState } from '$lib/deepresearch/sw-db';
+	import { loadResearch, loadKey, loadSetting, type ResearchState } from '$lib/deepresearch/sw-db';
 	import '$lib/deepresearch/dr.css';
-	import { slug, type RetryError } from '$lib/deepresearch/core';
+	import { slug, MODEL, GEMINI_MODEL, type RetryError } from '$lib/deepresearch/core';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
@@ -48,14 +48,21 @@
 	}
 
 	async function resume() {
-		const key = await loadKey();
-		if (!key) {
+		const [key, provider, model] = await Promise.all([
+			loadKey(),
+			loadSetting('provider'),
+			loadSetting('model')
+		]);
+		const prov = provider || 'openrouter';
+		const mdl = model || (prov === 'gemini' ? GEMINI_MODEL : MODEL);
+		const k = prov === 'gemini' ? await loadSetting('gemini_key') : key;
+		if (!k) {
 			goto('/settings');
 			return;
 		}
 		if (state) state.status = 'running';
 		stale = false;
-		await postMsg({ type: 'resume-research', id, key });
+		await postMsg({ type: 'resume-research', id, key: k, provider: prov, model: mdl });
 	}
 
 	$effect(() => {

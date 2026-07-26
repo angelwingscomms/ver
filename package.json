@@ -42,9 +42,13 @@
 		"wrangler": "^4.97.0"
 	},
 	"dependencies": {
+		"@ai-sdk/google": "^4.0.24",
+		"@ai-sdk/openai": "^4.0.20",
 		"@paystack/inline-js": "^2.23.1",
 		"@qdrant/js-client-rest": "^1.18.0",
+		"ai": "^7.0.37",
 		"arctic": "^3.7.0",
-		"marked": "^18.0.6"
+		"marked": "^18.0.6",
+		"zod": "^4.4.3"
 	}
 }

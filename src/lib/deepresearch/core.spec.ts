@@ -1,7 +1,19 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { slug, search_bible, call_llm, MODEL, TOOLS } from './core';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { slug, search_bible, call_llm, MODEL } from './core';
 
-afterEach(() => vi.unstubAllGlobals());
+vi.mock('ai', () => ({
+	generateText: vi.fn()
+}));
+vi.mock('@ai-sdk/openai', () => ({
+	createOpenAI: vi.fn(() => vi.fn(() => 'openrouter-model'))
+}));
+vi.mock('@ai-sdk/google', () => ({
+	createGoogleGenerativeAI: vi.fn(() => vi.fn(() => 'gemini-model'))
+}));
+
+const { generateText } = vi.mocked(await import('ai'));
+
+beforeEach(() => vi.clearAllMocks());
 
 describe('slug', () => {
 	it('kebab-cases the question', () => {
@@ -50,42 +62,71 @@ describe('search_bible', () => {
 });
 
 describe('call_llm', () => {
-	it('sends model and tools, returns the assistant message', async () => {
-		const fetch_mock = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({
-						choices: [{ message: { role: 'assistant', content: 'hi' } }],
-						usage: { prompt_tokens: 1, completion_tokens: 2 }
-					})
-				)
-		);
-		vi.stubGlobal('fetch', fetch_mock);
-		const r = await call_llm('k', [{ role: 'user', content: 'q' }], false);
-		expect(r.message.content).toBe('hi');
-		expect(r.usage?.prompt_tokens).toBe(1);
-		const body = JSON.parse((fetch_mock.mock.calls[0] as any)[1].body as string);
-		expect(body.model).toBe(MODEL);
-		expect(body.tool_choice).toBe('auto');
-		expect(body.tools).toHaveLength(TOOLS.length);
+	it('returns text and usage from generateText', async () => {
+		generateText.mockResolvedValue({
+			text: 'hello',
+			toolCalls: [],
+			usage: { inputTokens: 10, outputTokens: 20, inputTokenDetails: {} },
+			finishReason: 'stop',
+			response: { messages: [] }
+		});
+		const r = await call_llm('k', [{ role: 'user', content: 'q' }]);
+		expect(r.message.content).toBe('hello');
+		expect(r.usage?.prompt_tokens).toBe(10);
+		expect(r.usage?.completion_tokens).toBe(20);
 	});
-	it('forces the finish tool when force_finish is true', async () => {
-		const fetch_mock = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({ choices: [{ message: { role: 'assistant', content: null } }] })
-				)
-		);
-		vi.stubGlobal('fetch', fetch_mock);
-		await call_llm('k', [], true);
-		const body = JSON.parse((fetch_mock.mock.calls[0] as any)[1].body as string);
-		expect(body.tool_choice).toEqual({ type: 'function', function: { name: 'finish' } });
+
+	it('maps tool calls correctly', async () => {
+		generateText.mockResolvedValue({
+			text: null,
+			toolCalls: [
+				{
+					toolCallId: 'call_1',
+					toolName: 'search_bible',
+					input: { query: 'love', scope: 'verses' }
+				}
+			],
+			usage: { inputTokens: 5, outputTokens: 10, inputTokenDetails: {} },
+			finishReason: 'tool_calls',
+			response: { messages: [] }
+		});
+		const r = await call_llm('k', [{ role: 'user', content: 'q' }], 'openrouter', MODEL, false);
+		expect(r.message.content).toBeNull();
+		expect(r.message.tool_calls).toHaveLength(1);
+		expect(r.message.tool_calls![0].function.name).toBe('search_bible');
+		expect(JSON.parse(r.message.tool_calls![0].function.arguments)).toEqual({
+			query: 'love',
+			scope: 'verses'
+		});
 	});
-	it('throws on http error', async () => {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(async () => new Response('nope', { status: 429 }))
-		);
-		await expect(call_llm('k', [], false)).rejects.toThrow('llm 429');
+
+	it('only includes finish tool when forceFinish is true', async () => {
+		generateText.mockResolvedValue({
+			text: null,
+			toolCalls: [
+				{
+					toolCallId: 'call_2',
+					toolName: 'finish',
+					input: { answer: 'The answer is 42.' }
+				}
+			],
+			usage: { inputTokens: 5, outputTokens: 10, inputTokenDetails: {} },
+			finishReason: 'tool_calls',
+			response: { messages: [] }
+		});
+		const r = await call_llm('k', [{ role: 'user', content: 'q' }], 'openrouter', MODEL, true);
+		expect(r.message.tool_calls![0].function.name).toBe('finish');
+	});
+
+	it('uses gemini provider when specified', async () => {
+		generateText.mockResolvedValue({
+			text: 'gemini reply',
+			toolCalls: [],
+			usage: { inputTokens: 3, outputTokens: 6, inputTokenDetails: {} },
+			finishReason: 'stop',
+			response: { messages: [] }
+		});
+		const r = await call_llm('gk', [{ role: 'user', content: 'q' }], 'gemini', 'gemini-2.0-flash');
+		expect(r.message.content).toBe('gemini reply');
 	});
 });

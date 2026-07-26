@@ -12,7 +12,13 @@ import {
 	type Msg,
 	type RetryError
 } from '$lib/deepresearch/core';
-import { saveResearch, loadResearch, listResearch, deleteResearch, type ResearchState } from '$lib/deepresearch/sw-db';
+import {
+	saveResearch,
+	loadResearch,
+	listResearch,
+	deleteResearch,
+	type ResearchState
+} from '$lib/deepresearch/sw-db';
 
 function broadcast(data: unknown) {
 	self.clients.matchAll().then((cs) => cs.forEach((c) => c.postMessage(data)));
@@ -32,10 +38,23 @@ function recordError(state: ResearchState, err: RetryError) {
 	broadcast({ type: 'error-log', id: state.id, error: err });
 }
 
-async function runResearch(state: ResearchState, key: string): Promise<void> {
+async function runResearch(
+	state: ResearchState,
+	key: string,
+	provider = 'openrouter',
+	model = MODEL
+): Promise<void> {
 	const startTime = Date.now();
 	const { id, question, maxSearches, maxRetries } = state;
-	console.log('[sw:runResearch] id=%s maxSearches=%d searchesUsed=%d turn=%d', id.slice(0, 8), maxSearches, state.searchesUsed, state.turn);
+	console.log(
+		'[sw:runResearch] id=%s provider=%s model=%s maxSearches=%d searchesUsed=%d turn=%d',
+		id.slice(0, 8),
+		provider,
+		model,
+		maxSearches,
+		state.searchesUsed,
+		state.turn
+	);
 
 	const messages: Msg[] =
 		state.messages.length > 2
@@ -53,7 +72,7 @@ async function runResearch(state: ResearchState, key: string): Promise<void> {
 
 	while (!answer) {
 		const llmResult = await withRetry(
-			() => call_llm(key, messages),
+			() => call_llm(key, messages, provider, model),
 			maxRetries,
 			(re) => {
 				recordError(state, re);
@@ -80,7 +99,14 @@ async function runResearch(state: ResearchState, key: string): Promise<void> {
 		const { message: m } = llmResult;
 		turn++;
 
-		if (m.content) thoughtLog.push({ k: 'think', n: turn, c: m.content, cost: llmResult.usage?.total_cost, cost_kind: 'llm' });
+		if (m.content)
+			thoughtLog.push({
+				k: 'think',
+				n: turn,
+				c: m.content,
+				cost: llmResult.usage?.total_cost,
+				cost_kind: 'llm'
+			});
 		for (const tc of m.tool_calls ?? []) {
 			if (tc.function.name === 'search_bible') {
 				let q = '';
@@ -95,7 +121,13 @@ async function runResearch(state: ResearchState, key: string): Promise<void> {
 					cost_kind: 'llm'
 				});
 			} else if (tc.function.name === 'finish') {
-				thoughtLog.push({ k: 'finish', n: turn, c: 'Synthesizing final answer…', cost: llmResult.usage?.total_cost, cost_kind: 'llm' });
+				thoughtLog.push({
+					k: 'finish',
+					n: turn,
+					c: 'Synthesizing final answer…',
+					cost: llmResult.usage?.total_cost,
+					cost_kind: 'llm'
+				});
 			}
 		}
 
@@ -220,7 +252,7 @@ async function runResearch(state: ResearchState, key: string): Promise<void> {
 	const total_cost = llm_cost + search_cost;
 	const cost_block =
 		'\n\n---\n\n# research cost\n\n' +
-		`- **LLM cost** (OpenRouter ${MODEL}): $${llm_cost.toFixed(6)}\n` +
+		`- **LLM cost** (${provider} ${model}): $${llm_cost.toFixed(6)}\n` +
 		`- **Search cost** (embeddings ${EMBEDDING_MODEL}): $${search_cost.toFixed(6)}\n` +
 		`- **Total research cost**: $${total_cost.toFixed(6)}\n`;
 	state.status = 'complete';
@@ -254,10 +286,17 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
 	const d = event.data || {};
-	const { type, id, question, key } = d;
+	const { type, id, question, key, provider, model } = d;
 	const maxSearches = d.maxSearches ?? FREE_SEARCHES;
 	const maxRetries = d.maxRetries ?? 9;
-	console.log('[sw:msg] received', { type, id: id?.slice(0, 8), maxSearches, maxRetries });
+	console.log('[sw:msg] received', {
+		type,
+		id: id?.slice(0, 8),
+		provider,
+		model,
+		maxSearches,
+		maxRetries
+	});
 
 	if (type === 'start-research') {
 		const state: ResearchState = {
@@ -277,7 +316,7 @@ self.addEventListener('message', (event) => {
 		};
 		event.waitUntil(
 			saveResearch(state)
-				.then(() => runResearch(state, key))
+				.then(() => runResearch(state, key, provider, model))
 				.catch(async (e) => {
 					console.error('[sw:msg] start-research error:', e);
 					state.status = 'error';
@@ -297,8 +336,15 @@ self.addEventListener('message', (event) => {
 					return;
 				}
 				saved.status = 'running';
-				console.log('[sw:msg] resume: turn=%d searchesUsed=%d/%d', saved.turn, saved.searchesUsed, saved.maxSearches);
-				return runResearch(saved, key).catch(async (e) => {
+				console.log(
+					'[sw:msg] resume: turn=%d searchesUsed=%d/%d provider=%s model=%s',
+					saved.turn,
+					saved.searchesUsed,
+					saved.maxSearches,
+					provider,
+					model
+				);
+				return runResearch(saved, key, provider, model).catch(async (e) => {
 					console.error('[sw:msg] resume error:', e);
 					saved.status = 'error';
 					saved.error = String(e);

@@ -84,22 +84,30 @@ export async function deleteResearch(id: string): Promise<void> {
 	});
 }
 
-export async function saveKey(key: string): Promise<void> {
+export async function saveSetting(key: string, value: string): Promise<void> {
 	const db = await openDB();
 	return new Promise((resolve, reject) => {
 		const tx = db.transaction(KEY_STORE, 'readwrite');
-		tx.objectStore(KEY_STORE).put(key, 'openrouter_key');
+		tx.objectStore(KEY_STORE).put(value, key);
 		tx.oncomplete = () => resolve();
 		tx.onerror = () => reject(tx.error);
 	});
 }
 
-export async function loadKey(): Promise<string | undefined> {
+export async function loadSetting(key: string): Promise<string | undefined> {
 	const db = await openDB();
 	return new Promise((resolve, reject) => {
 		const tx = db.transaction(KEY_STORE, 'readonly');
-		const req = tx.objectStore(KEY_STORE).get('openrouter_key');
+		const req = tx.objectStore(KEY_STORE).get(key);
 		req.onsuccess = () => resolve(req.result ?? undefined);
 		req.onerror = () => reject(req.error);
 	});
+}
+
+export async function saveKey(key: string): Promise<void> {
+	return saveSetting('openrouter_key', key);
+}
+
+export async function loadKey(): Promise<string | undefined> {
+	return loadSetting('openrouter_key');
 }

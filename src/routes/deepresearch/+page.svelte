@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
-	import { loadKey, listResearch, type ResearchState } from '$lib/deepresearch/sw-db';
+	import { loadKey, loadSetting, listResearch, type ResearchState } from '$lib/deepresearch/sw-db';
 	import '$lib/deepresearch/dr.css';
-	import { FREE_SEARCHES } from '$lib/deepresearch/core';
+	import { FREE_SEARCHES, MODEL, GEMINI_MODEL } from '$lib/deepresearch/core';
 
 	let items = $state<ResearchState[]>([]);
 	let q = $state('');
@@ -89,22 +89,31 @@
 		starting = true;
 		msg = '';
 		try {
-			const key = await loadKey();
-			console.log('[dr:start] loadKey returned', key ? `key=${key.slice(0, 8)}…` : 'undefined');
-			if (!key) {
-				msg = 'Set your OpenRouter API key in settings first.';
+			const [key, provider, model] = await Promise.all([
+				loadKey(),
+				loadSetting('provider'),
+				loadSetting('model')
+			]);
+			const prov = provider || 'openrouter';
+			const mdl = model || (prov === 'gemini' ? GEMINI_MODEL : MODEL);
+			const k = prov === 'gemini' ? await loadSetting('gemini_key') : key;
+			console.log('[dr:start] loadKey returned', k ? `key=${k.slice(0, 8)}…` : 'undefined');
+			if (!k) {
+				msg = `Set your ${prov === 'gemini' ? 'Gemini' : 'OpenRouter'} API key in settings first.`;
 				return;
 			}
 			const id = crypto.randomUUID();
 			console.log('[dr:start] generated id=%s, calling postMsg…', id);
-			console.log('[dr:start] payload', { id, maxSearches: Math.max(1, maxSearches), maxRetries: Math.max(0, maxRetries) });
+			console.log('[dr:start] payload', { id, provider: prov, model: mdl, maxSearches: Math.max(1, maxSearches), maxRetries: Math.max(0, maxRetries) });
 			await postMsg({
 				type: 'start-research',
 				id,
 				question: q.trim(),
 				maxSearches: Math.max(1, maxSearches),
 				maxRetries: Math.max(0, maxRetries),
-				key
+				key: k,
+				provider: prov,
+				model: mdl
 			});
 			console.log('[dr:start] postMsg resolved, navigating to detail page');
 			goto(`/deepresearch/${id}?q=${encodeURIComponent(q.trim())}`);
