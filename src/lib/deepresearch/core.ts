@@ -132,6 +132,50 @@ export type EmbeddingResp = {
 
 export type LlmResp = { message: Msg; usage?: Usage };
 
+function toModelMessages(msgs: Msg[]): Record<string, unknown>[] {
+	const out: Record<string, unknown>[] = [];
+	const toolNames = new Map<string, string>();
+	for (const m of msgs) {
+		if (m.role === 'assistant') {
+			const content: unknown[] = [];
+			if (m.content) content.push({ type: 'text', text: m.content });
+			for (const tc of m.tool_calls ?? []) {
+				toolNames.set(tc.id, tc.function.name);
+				let input: unknown = {};
+				if (tc.function.arguments) {
+					try {
+						input = JSON.parse(tc.function.arguments);
+					} catch {
+						input = {};
+					}
+				}
+				content.push({
+					type: 'tool-call',
+					toolCallId: tc.id,
+					toolName: tc.function.name,
+					input
+				});
+			}
+			out.push({ role: 'assistant', content });
+		} else if (m.role === 'tool') {
+			out.push({
+				role: 'tool',
+				content: [
+					{
+						type: 'tool-result',
+						toolCallId: m.tool_call_id ?? '',
+						toolName: toolNames.get(m.tool_call_id ?? '') ?? '',
+						output: { type: 'text', value: m.content ?? '' }
+					}
+				]
+			});
+		} else {
+			out.push({ role: m.role, content: m.content ?? '' });
+		}
+	}
+	return out;
+}
+
 const searchTool = {
 	description:
 		"Semantic search over the entire Bible (Young's Literal Translation). Returns the 10 most similar passages as {b: book, c: chapter, v: verse, t: text, s: similarity score}.",
@@ -207,7 +251,7 @@ export async function call_llm(
 	const options = {
 		model: modelInstance,
 		system,
-		messages: msgs,
+		messages: toModelMessages(msgs),
 		tools: forceFinish ? { finish: finishTool } : { search_bible: searchTool, finish: finishTool },
 		toolChoice: forceFinish ? { type: 'tool', toolName: 'finish' } : 'auto',
 		...(provider === 'codex' || provider === 'chatgpt' ? {} : { temperature: 0.6 })

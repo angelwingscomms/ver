@@ -139,7 +139,10 @@ describe('call_llm', () => {
 		});
 		const r = await call_llm(
 			'ignored',
-			[{ role: 'system', content: 'sys' }, { role: 'user', content: 'q' }],
+			[
+				{ role: 'system', content: 'sys' },
+				{ role: 'user', content: 'q' }
+			],
 			'codex',
 			'gpt-5.5',
 			false,
@@ -163,5 +166,54 @@ describe('call_llm', () => {
 		});
 		await call_llm('k', [{ role: 'user', content: 'q' }]);
 		expect(generateText.mock.calls[0][0].temperature).toBe(0.6);
+	});
+
+	it('converts tool messages to the v7 parts format', async () => {
+		generateText.mockResolvedValue({
+			text: 'done',
+			toolCalls: [],
+			usage: { inputTokens: 1, outputTokens: 1, inputTokenDetails: {} },
+			finishReason: 'stop',
+			response: { messages: [] }
+		});
+		await call_llm('k', [
+			{ role: 'user', content: 'q' },
+			{
+				role: 'assistant',
+				content: null,
+				tool_calls: [
+					{
+						id: 'call_1',
+						type: 'function',
+						function: { name: 'search_bible', arguments: '{"query":"love"}' }
+					}
+				]
+			},
+			{ role: 'tool', tool_call_id: 'call_1', content: '{"r":[]}' }
+		]);
+		const opts = generateText.mock.calls[0][0] as Record<string, unknown>;
+		const msgs = opts['messages'] as Record<string, unknown>[];
+		expect(msgs[1]).toEqual({
+			role: 'assistant',
+			content: [
+				{
+					type: 'tool-call',
+					toolCallId: 'call_1',
+					toolName: 'search_bible',
+					input: { query: 'love' }
+				}
+			]
+		});
+		expect(msgs[2]).toEqual({
+			role: 'tool',
+			content: [
+				{
+					type: 'tool-result',
+					toolCallId: 'call_1',
+					toolName: 'search_bible',
+					output: { type: 'text', value: '{"r":[]}' }
+				}
+			]
+		});
 	});
 });
