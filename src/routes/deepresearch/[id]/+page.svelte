@@ -3,7 +3,13 @@
 	import { marked } from 'marked';
 	import { loadResearch, loadKey, loadSetting, type ResearchState } from '$lib/deepresearch/sw-db';
 	import '$lib/deepresearch/dr.css';
-	import { slug, MODEL, GEMINI_MODEL, type RetryError } from '$lib/deepresearch/core';
+	import {
+		slug,
+		MODEL,
+		GEMINI_MODEL,
+		CHATGPT_MODEL,
+		type RetryError
+	} from '$lib/deepresearch/core';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
@@ -54,9 +60,10 @@
 			loadSetting('model')
 		]);
 		const prov = provider || 'openrouter';
-		const mdl = model || (prov === 'gemini' ? GEMINI_MODEL : MODEL);
-		const k = prov === 'gemini' ? await loadSetting('gemini_key') : key;
-		if (!k) {
+		const mdl =
+			model || (prov === 'gemini' ? GEMINI_MODEL : prov === 'chatgpt' ? CHATGPT_MODEL : MODEL);
+		const k = prov === 'chatgpt' ? '' : prov === 'gemini' ? await loadSetting('gemini_key') : key;
+		if (prov !== 'chatgpt' && !k) {
 			goto('/settings');
 			return;
 		}
@@ -76,7 +83,12 @@
 					if (d.thoughts) thoughts = d.thoughts.slice().sort((a: T, b: T) => a.n - b.n || 0);
 				}
 				if (d.type === 'complete') {
-					state = { ...(state || {}), status: 'complete', answer: d.answer, thoughtLog: d.thoughtLog } as ResearchState;
+					state = {
+						...(state || {}),
+						status: 'complete',
+						answer: d.answer,
+						thoughtLog: d.thoughtLog
+					} as ResearchState;
 					thoughts = (d.thoughtLog || []).slice().sort((a: T, b: T) => a.n - b.n || 0);
 					stop();
 				}
@@ -89,7 +101,9 @@
 					stop();
 				}
 				if (d.type === 'error-log') {
-					console.log(`[research error] turn ${d.error.turn}, attempt ${d.error.attempt}: ${d.error.message}`);
+					console.log(
+						`[research error] turn ${d.error.turn}, attempt ${d.error.attempt}: ${d.error.message}`
+					);
 					if (d.error.detail) console.debug(d.error.detail);
 					errors = [...errors, d.error].sort((a, b) => a.timestamp - b.timestamp);
 				}
@@ -211,7 +225,9 @@
 					<span class="cost">
 						{state.searchesUsed} searches
 						{#if state.total_cost}
-							· LLM {fmtCost(state.llm_cost)} · Search {fmtCost(state.search_cost)} · Total {fmtCost(state.total_cost)}
+							· LLM {fmtCost(state.llm_cost)} · Search {fmtCost(state.search_cost)} · Total {fmtCost(
+								state.total_cost
+							)}
 						{/if}
 					</span>
 					<button type="button" onclick={download}>Download .md</button>
@@ -227,11 +243,19 @@
 		{/if}
 		{#if errors.length}
 			<section class="errors">
-				<h2>Errors{errors.filter((e) => e.attempt < (state?.maxRetries ?? 9)).length ? ' (recovered)' : ''}</h2>
+				<h2>
+					Errors{errors.filter((e) => e.attempt < (state?.maxRetries ?? 9)).length
+						? ' (recovered)'
+						: ''}
+				</h2>
 				<ul>
 					{#each errors as e, idx (idx)}
 						<li class="err-item">
-							<span class="err-tag" class:recovered={e.attempt < (state?.maxRetries ?? 9)} class:fatal={e.attempt >= (state?.maxRetries ?? 9)}>
+							<span
+								class="err-tag"
+								class:recovered={e.attempt < (state?.maxRetries ?? 9)}
+								class:fatal={e.attempt >= (state?.maxRetries ?? 9)}
+							>
 								{e.attempt < (state?.maxRetries ?? 9) ? 'recovered' : 'fatal'}
 							</span>
 							<span class="err-msg">turn {e.turn} / try {e.attempt + 1}: {e.message}</span>

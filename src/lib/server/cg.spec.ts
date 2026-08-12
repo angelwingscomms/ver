@@ -3,8 +3,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const poll_result = { status: 'pending' as string };
 const tokens = { accessToken: 'at', refreshToken: 'rt', idToken: 'it', accountId: 'acc' };
 
+const codex_fetch = vi.fn(async () => new Response('ok'));
+const refreshed = { accessToken: 'at2', refreshToken: 'rt2', accountId: 'acc' };
+
 vi.mock('@opencoredev/loginwithchatgpt-core', () => ({
-	resolveConfig: () => ({}),
+	resolveConfig: () => ({ codexBaseUrl: 'https://codex.test/backend-api/codex' }),
+	createCodexFetch: vi.fn((o: { getAuth: () => Promise<unknown> }) => {
+		auth_of = o.getAuth;
+		return codex_fetch;
+	}),
+	ensureFreshTokens: vi.fn(
+		async (
+			_c: unknown,
+			_t: unknown,
+			o: { onRefresh?: (t: typeof refreshed) => Promise<void> }
+		) => {
+			await o?.onRefresh?.(refreshed);
+			return refreshed;
+		}
+	),
 	requestDeviceCode: vi.fn(async () => ({
 		deviceAuthId: 'dev1',
 		userCode: 'ABCD-EFGHI',
@@ -23,9 +40,11 @@ vi.mock('./user', () => ({
 	set_user_fields: vi.fn(async () => {})
 }));
 
-const { start_chatgpt_login, poll_chatgpt_login } = await import('./cg');
-const { save_user, set_user_fields } = vi.mocked(await import('./user'));
-const { decrypt_chatgpt_secret } = await import('./cg_crypto');
+let auth_of: (() => Promise<unknown>) | undefined;
+
+const { start_chatgpt_login, poll_chatgpt_login, codex_call } = await import('./cg');
+const { get_user, save_user, set_user_fields } = vi.mocked(await import('./user'));
+const { decrypt_chatgpt_secret, encrypt_chatgpt_secret } = await import('./cg_crypto');
 
 const env = { QDRANT_URL: 'u', QDRANT_KEY: 'k', LWC_KEY: 'secret' };
 
@@ -84,12 +103,36 @@ describe('chatgpt device login', () => {
 	});
 
 	it('expires a pending code past its deadline', async () => {
-		const { encrypt_chatgpt_secret } = await import('./cg_crypto');
 		const stale = await encrypt_chatgpt_secret('secret', {
 			i: 'dev1',
 			c: 'ABCD-EFGHI',
 			e: Date.now() - 1
 		});
 		expect(await poll_chatgpt_login(env, stale)).toEqual({ status: 'expired' });
+	});
+});
+
+describe('codex proxy call', () => {
+	it('refuses when the account has no chatgpt tokens', async () => {
+		get_user.mockResolvedValue({ s: 'u', n: 'a', d: 1 });
+		await expect(codex_call(env, 'a@b.com', '{}')).rejects.toThrow('no chatgpt account connected');
+	});
+
+	it('posts the body to the codex responses endpoint and stores refreshed tokens', async () => {
+		get_user.mockResolvedValue({
+			s: 'u',
+			n: 'a',
+			d: 1,
+			cg: await encrypt_chatgpt_secret('secret', tokens)
+		});
+		const body = JSON.stringify({ model: 'gpt-5.5', input: 'hi' });
+		await codex_call(env, 'a@b.com', body);
+		expect(codex_fetch).toHaveBeenCalledWith(
+			'https://codex.test/backend-api/codex/responses',
+			expect.objectContaining({ method: 'POST', body })
+		);
+		expect(await auth_of!()).toEqual({ accessToken: 'at2', accountId: 'acc' });
+		const stored = set_user_fields.mock.calls.at(-1)![2].cg!;
+		expect(await decrypt_chatgpt_secret('secret', stored)).toEqual(refreshed);
 	});
 });

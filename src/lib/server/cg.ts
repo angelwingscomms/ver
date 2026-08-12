@@ -4,7 +4,9 @@ import {
 	pollDeviceCode,
 	exchangeDeviceAuthorization,
 	parseUser,
-	listCodexModels
+	listCodexModels,
+	ensureFreshTokens,
+	createCodexFetch
 } from '@opencoredev/loginwithchatgpt-core';
 import { get_user, save_user, set_user_fields, type UEnv } from './user';
 import {
@@ -87,6 +89,31 @@ export async function poll_chatgpt_login(
 export async function chatgpt_status(env: CgEnv, userId: string) {
 	const u = await get_user(env, userId);
 	return { connected: !!u?.cg, n: u?.cgn, m: u?.cgm, models: u?.cgl ?? [] };
+}
+
+export async function codex_call(env: CgEnv, userId: string, body: string): Promise<Response> {
+	const u = await get_user(env, userId);
+	if (!u?.cg) throw new Error('no chatgpt account connected');
+	const key = await get_secret(env.LWC_KEY);
+	let tokens = await decrypt_chatgpt_secret<ChatGptTokens>(key, u.cg);
+	const config = resolveConfig();
+	const codex_fetch = createCodexFetch({
+		config,
+		getAuth: async () => {
+			tokens = await ensureFreshTokens(config, tokens, {
+				onRefresh: async (t) => {
+					tokens = t;
+					await set_user_fields(env, userId, { cg: await encrypt_chatgpt_secret(key, t) });
+				}
+			});
+			return { accessToken: tokens.accessToken, accountId: tokens.accountId! };
+		}
+	});
+	return codex_fetch(`${config.codexBaseUrl}/responses`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body
+	});
 }
 
 export async function disconnect_chatgpt(env: CgEnv, userId: string) {

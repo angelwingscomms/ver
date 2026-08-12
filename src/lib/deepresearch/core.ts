@@ -6,6 +6,7 @@ import { z } from 'zod';
 export const MODEL = 'deepseek/deepseek-v4-flash';
 export const GEMINI_MODEL = 'gemini-2.0-flash';
 export const CHATGPT_MODEL = 'gpt-5.5';
+export const CODEX_PROXY = '/api/codex';
 export const EMBEDDING_MODEL = 'qwen/qwen3-embedding-8b';
 export const FREE_SEARCHES = 54;
 export const FREE_STEPS = FREE_SEARCHES;
@@ -99,7 +100,10 @@ export type SearchResult = {
 	usage?: { prompt_tokens: number };
 };
 
-export async function search_bible(args: Record<string, unknown>, searchUrl?: string): Promise<SearchResult> {
+export async function search_bible(
+	args: Record<string, unknown>,
+	searchUrl?: string
+): Promise<SearchResult> {
 	const p = new URLSearchParams();
 	p.set('q', String(args.query ?? ''));
 	p.set(args.scope === 'chapters' ? 'c' : 'v', '');
@@ -160,7 +164,11 @@ export async function call_llm(
 	provider = 'openrouter',
 	model = MODEL,
 	forceFinish = false,
-	codex?: { get_auth: () => Promise<{ accessToken: string; accountId: string }> | { accessToken: string; accountId: string } }
+	codex?: {
+		get_auth: () =>
+			| Promise<{ accessToken: string; accountId: string }>
+			| { accessToken: string; accountId: string };
+	}
 ): Promise<LlmResp> {
 	let modelInstance;
 	let streamMode = false;
@@ -174,6 +182,13 @@ export async function call_llm(
 			apiKey: 'login-with-chatgpt',
 			baseURL: config.codexBaseUrl,
 			fetch: createCodexFetch({ config, getAuth: codex!.get_auth })
+		});
+		modelInstance = openai(model);
+		streamMode = true;
+	} else if (provider === 'chatgpt') {
+		const openai = createOpenAI({
+			apiKey: 'login-with-chatgpt',
+			baseURL: `${typeof location === 'undefined' ? '' : location.origin}${CODEX_PROXY}`
 		});
 		modelInstance = openai(model);
 		streamMode = true;
@@ -195,7 +210,7 @@ export async function call_llm(
 		messages: msgs,
 		tools: forceFinish ? { finish: finishTool } : { search_bible: searchTool, finish: finishTool },
 		toolChoice: forceFinish ? { type: 'tool', toolName: 'finish' } : 'auto',
-		...(provider === 'codex' ? {} : { temperature: 0.6 })
+		...(provider === 'codex' || provider === 'chatgpt' ? {} : { temperature: 0.6 })
 	};
 
 	let result;

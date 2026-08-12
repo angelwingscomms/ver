@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { loadKey, loadSetting, listResearch, type ResearchState } from '$lib/deepresearch/sw-db';
 	import '$lib/deepresearch/dr.css';
-	import { FREE_SEARCHES, MODEL, GEMINI_MODEL } from '$lib/deepresearch/core';
+	import { FREE_SEARCHES, MODEL, GEMINI_MODEL, CHATGPT_MODEL } from '$lib/deepresearch/core';
 
 	let items = $state<ResearchState[]>([]);
 	let q = $state('');
@@ -16,7 +16,12 @@
 	$effect(() => {
 		if (!browser) return;
 		Promise.all([loadKey(), loadSetting('provider'), loadSetting('gemini_key')]).then(
-			([ok, p, gk]) => (hasKey = p === 'gemini' ? !!gk : !!ok)
+			async ([ok, p, gk]) => {
+				if (p === 'chatgpt') {
+					const j = (await (await fetch('/api/chatgpt')).json()) as { connected?: boolean };
+					hasKey = !!j.connected;
+				} else hasKey = p === 'gemini' ? !!gk : !!ok;
+			}
 		);
 		load();
 	});
@@ -82,7 +87,11 @@
 
 	async function start() {
 		console.log('[dr:start] called, q=%s, starting=%s, hasKey=%s', q.trim(), starting, hasKey);
-		if (!q.trim() || starting) return;
+		if (starting) return;
+		if (!q.trim()) {
+			msg = 'type a research question first.';
+			return;
+		}
 		if (!hasKey) {
 			console.log('[dr:start] no key, redirecting to /settings');
 			goto('/settings');
@@ -97,16 +106,22 @@
 				loadSetting('model')
 			]);
 			const prov = provider || 'openrouter';
-			const mdl = model || (prov === 'gemini' ? GEMINI_MODEL : MODEL);
-			const k = prov === 'gemini' ? await loadSetting('gemini_key') : key;
-			console.log('[dr:start] loadKey returned', k ? `key=${k.slice(0, 8)}…` : 'undefined');
-			if (!k) {
+			const mdl =
+				model || (prov === 'gemini' ? GEMINI_MODEL : prov === 'chatgpt' ? CHATGPT_MODEL : MODEL);
+			const k = prov === 'chatgpt' ? '' : prov === 'gemini' ? await loadSetting('gemini_key') : key;
+			if (prov !== 'chatgpt' && !k) {
 				msg = `Set your ${prov === 'gemini' ? 'Gemini' : 'OpenRouter'} API key in settings first.`;
 				return;
 			}
 			const id = crypto.randomUUID();
 			console.log('[dr:start] generated id=%s, calling postMsg…', id);
-			console.log('[dr:start] payload', { id, provider: prov, model: mdl, maxSearches: Math.max(1, maxSearches), maxRetries: Math.max(0, maxRetries) });
+			console.log('[dr:start] payload', {
+				id,
+				provider: prov,
+				model: mdl,
+				maxSearches: Math.max(1, maxSearches),
+				maxRetries: Math.max(0, maxRetries)
+			});
 			await postMsg({
 				type: 'start-research',
 				id,
@@ -188,7 +203,9 @@
 			<button type="submit" disabled={starting}>{starting ? 'Starting…' : 'Start research'}</button>
 		</div>
 		<p class="hint">
-			First {FREE_SEARCHES} searches free{hasKey ? '. The model decides how many thinking turns to use.' : '; '}
+			First {FREE_SEARCHES} searches free{hasKey
+				? '. The model decides how many thinking turns to use.'
+				: '; '}
 			{hasKey ? '' : 'set your OpenRouter key in '}
 			<a href="/settings">settings</a>
 			{hasKey ? '' : ' to start.'}
@@ -200,10 +217,7 @@
 
 	<section class="list">
 		{#each items as r (r.id)}
-			<a
-				class="item"
-				href={`/deepresearch/${r.id}?q=${encodeURIComponent(r.question)}`}
-			>
+			<a class="item" href={`/deepresearch/${r.id}?q=${encodeURIComponent(r.question)}`}>
 				<span class="q">{r.question}</span>
 				<span class="meta">
 					{#if r.searchesUsed}
@@ -234,13 +248,20 @@
 		padding: 0.7rem;
 		border: 1px solid #dbe3f0;
 		border-radius: 14px;
-		box-shadow: 0 1px 2px rgba(22, 35, 63, 0.04), 0 12px 30px -18px rgba(22, 35, 63, 0.25);
+		box-shadow:
+			0 1px 2px rgba(22, 35, 63, 0.04),
+			0 12px 30px -18px rgba(22, 35, 63, 0.25);
 	}
 	textarea {
 		width: 100%;
 		padding: 0.8rem 0.9rem;
 		font-size: 1rem;
-		font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+		font-family:
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			sans-serif;
 		color: #16233f;
 		background: #f4f7fc;
 		border: 1px solid #dbe3f0;
@@ -301,7 +322,10 @@
 		background: #fff;
 		border: 1px solid #e4e9f2;
 		border-radius: 12px;
-		transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+		transition:
+			border-color 0.15s ease,
+			box-shadow 0.15s ease,
+			transform 0.15s ease;
 	}
 	.msg {
 		text-align: left;

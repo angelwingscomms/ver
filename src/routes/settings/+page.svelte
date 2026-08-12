@@ -1,12 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import {
-		loadSetting,
-		saveSetting,
-		loadKey,
-		saveKey
-	} from '$lib/deepresearch/sw-db';
-	import { MODEL, GEMINI_MODEL } from '$lib/deepresearch/core';
+	import { loadSetting, saveSetting, loadKey, saveKey } from '$lib/deepresearch/sw-db';
+	import { MODEL, GEMINI_MODEL, CHATGPT_MODEL } from '$lib/deepresearch/core';
 	import ChatgptConnect from '$lib/components/chatgpt_connect.svelte';
 
 	let provider = $state('openrouter');
@@ -30,7 +25,7 @@
 			if (ok) openrouterKey = ok;
 			if (gk) geminiKey = gk;
 			if (m) selectedModel = m;
-			else selectedModel = p === 'gemini' ? GEMINI_MODEL : MODEL;
+			else selectedModel = p === 'gemini' ? GEMINI_MODEL : p === 'chatgpt' ? CHATGPT_MODEL : MODEL;
 		});
 	});
 
@@ -44,7 +39,15 @@
 		loadingModels = true;
 		models = [];
 		try {
-			if (provider === 'gemini') {
+			if (provider === 'chatgpt') {
+				const res = await fetch('/api/chatgpt');
+				const j = (await res.json()) as { connected?: boolean; models?: string[] };
+				if (!j.connected) {
+					modelError = 'connect a chatgpt account below first.';
+					return;
+				}
+				models = (j.models?.length ? j.models : [CHATGPT_MODEL]).map((m) => ({ id: m, name: m }));
+			} else if (provider === 'gemini') {
 				const k = geminiKey.trim();
 				if (!k) {
 					modelError = 'Enter your Gemini API key first.';
@@ -80,10 +83,6 @@
 		}
 	}
 
-	function currentKey() {
-		return provider === 'gemini' ? geminiKey.trim() : openrouterKey.trim();
-	}
-
 	async function save() {
 		await Promise.all([
 			saveSetting('provider', provider),
@@ -109,16 +108,24 @@
 		</p>
 	</header>
 
-	<form onsubmit={(e) => { e.preventDefault(); save(); }}>
+	<form
+		onsubmit={(e) => {
+			e.preventDefault();
+			save();
+		}}
+	>
 		<label class="field">
 			<span>Provider</span>
 			<select bind:value={provider} aria-label="LLM provider">
 				<option value="openrouter">OpenRouter</option>
 				<option value="gemini">Gemini (Google)</option>
+				<option value="chatgpt">your chatgpt plan</option>
 			</select>
 		</label>
 
-		{#if provider === 'openrouter'}
+		{#if provider === 'chatgpt'}
+			<p class="hint">no api key needed — research runs on the chatgpt account connected below.</p>
+		{:else if provider === 'openrouter'}
 			<label class="field">
 				<span>OpenRouter API Key</span>
 				<input
@@ -169,13 +176,17 @@
 	<section class="form cg-card">
 		<h2>chatgpt plan</h2>
 		<p class="lede">
-			Connect a ChatGPT account so API deep research runs on that plan. Usage counts against
-			the connected ChatGPT account, not your Ver token balance.
+			Connect a ChatGPT account so API deep research runs on that plan. Usage counts against the
+			connected ChatGPT account, not your Ver token balance.
 		</p>
 		<ChatgptConnect label="connect chatgpt" />
 	</section>
 
-	{#if provider === 'openrouter'}
+	{#if provider === 'chatgpt'}
+		<p class="hint">
+			research runs on the connected chatgpt plan — no key, no ver tokens, no openrouter spend.
+		</p>
+	{:else if provider === 'openrouter'}
 		<p class="hint">
 			<a href="https://openrouter.ai/keys" target="_blank" rel="noopener">Get an OpenRouter key</a>
 			— $1 credit included with signup.
@@ -205,7 +216,9 @@
 		padding: 1.5rem;
 		border: 1px solid #dbe3f0;
 		border-radius: 14px;
-		box-shadow: 0 1px 2px rgba(22, 35, 63, 0.04), 0 12px 30px -18px rgba(22, 35, 63, 0.25);
+		box-shadow:
+			0 1px 2px rgba(22, 35, 63, 0.04),
+			0 12px 30px -18px rgba(22, 35, 63, 0.25);
 	}
 	.field {
 		display: grid;
