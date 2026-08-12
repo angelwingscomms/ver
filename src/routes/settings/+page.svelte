@@ -7,6 +7,7 @@
 		saveKey
 	} from '$lib/deepresearch/sw-db';
 	import { MODEL, GEMINI_MODEL } from '$lib/deepresearch/core';
+	import ChatgptConnect from '$lib/components/chatgpt_connect.svelte';
 
 	let provider = $state('openrouter');
 	let openrouterKey = $state('');
@@ -16,14 +17,6 @@
 	let loadingModels = $state(false);
 	let saved = $state(false);
 	let modelError = $state('');
-	let cgState = $state<'idle' | 'adding' | 'waiting' | 'connected' | 'error'>('idle');
-	let cgCode = $state('');
-	let cgUrl = $state('');
-	let cgInterval = $state(5);
-	let cgEmail = $state('');
-	let cgName = $state('');
-	let cgError = $state('');
-	let cgPolling = $state<ReturnType<typeof setInterval> | null>(null);
 
 	$effect(() => {
 		if (!browser) return;
@@ -39,85 +32,7 @@
 			if (m) selectedModel = m;
 			else selectedModel = p === 'gemini' ? GEMINI_MODEL : MODEL;
 		});
-		fetch('/api/chatgpt')
-			.then((r) =>
-				r.ok
-					? (r.json() as Promise<{ connected?: boolean; m?: string; n?: string }>)
-					: Promise.resolve(null)
-			)
-			.then((j) => {
-				if (j?.connected) {
-					cgState = 'connected';
-					cgEmail = j.m ?? '';
-					cgName = j.n ?? '';
-				}
-			})
-			.catch(() => {});
 	});
-
-	function stopPolling() {
-		if (cgPolling) {
-			clearInterval(cgPolling);
-			cgPolling = null;
-		}
-	}
-
-	async function connectChatgpt() {
-		cgError = '';
-		if (cgState === 'waiting') return;
-		const popup = window.open('', 'ver-chatgpt-login', 'popup,width=520,height=720');
-		cgState = 'adding';
-		try {
-			const res = await fetch('/api/chatgpt/login', { method: 'POST' });
-			if (!res.ok) throw new Error(`login ${res.status}`);
-			const j = (await res.json()) as {
-				user_code: string;
-				verification_url: string;
-				interval: number;
-			};
-			cgCode = j.user_code;
-			cgUrl = j.verification_url;
-			cgInterval = Math.max(j.interval, 3);
-			await navigator.clipboard.writeText(cgCode);
-			cgState = 'waiting';
-			if (popup) popup.location.href = cgUrl;
-			stopPolling();
-			cgPolling = setInterval(pollChatgpt, cgInterval * 1000);
-		} catch (e) {
-			cgState = 'error';
-			cgError = String(e);
-			if (popup) popup.close();
-		}
-	}
-
-	async function pollChatgpt() {
-		try {
-			const res = await fetch('/api/chatgpt/poll', { method: 'POST' });
-			if (!res.ok) return;
-			const j = (await res.json()) as { status: string; m?: string; n?: string };
-			if (j.status === 'authenticated') {
-				stopPolling();
-				cgState = 'connected';
-				cgEmail = j.m ?? '';
-				cgName = j.n ?? '';
-			} else if (j.status === 'expired') {
-				stopPolling();
-				cgState = 'error';
-				cgError = 'code expired, try again';
-			}
-		} catch {
-			/* poll best-effort, next tick retries */
-		}
-	}
-
-	async function disconnectChatgpt() {
-		stopPolling();
-		await fetch('/api/chatgpt/disconnect', { method: 'POST' }).catch(() => {});
-		cgState = 'idle';
-		cgCode = '';
-		cgEmail = '';
-		cgName = '';
-	}
 
 	$effect(() => {
 		if (!browser) return;
@@ -257,25 +172,7 @@
 			Connect a ChatGPT account so API deep research runs on that plan. Usage counts against
 			the connected ChatGPT account, not your Ver token balance.
 		</p>
-		{#if cgState === 'connected'}
-			<p class="saved">
-				Connected{cgName ? ` as ${cgName}` : ''}{cgEmail ? ` (${cgEmail})` : ''}
-			</p>
-			<button type="button" onclick={disconnectChatgpt}>disconnect</button>
-		{:else if cgState === 'waiting'}
-			<p>open Chatgpt and enter code <b class="code">{cgCode}</b></p>
-			<p class="hint">
-				<a href={cgUrl} target="_blank" rel="noopener">open {cgUrl}</a> — code copied to
-				clipboard
-			</p>
-		{:else}
-			<button type="button" disabled={cgState === 'adding'} onclick={connectChatgpt}>
-				{cgState === 'adding' ? 'connecting…' : 'login with chatgpt'}
-			</button>
-			{#if cgState === 'error'}
-				<p class="err">{cgError}</p>
-			{/if}
-		{/if}
+		<ChatgptConnect />
 	</section>
 
 	{#if provider === 'openrouter'}
@@ -371,16 +268,5 @@
 	.cg-card h2 {
 		margin: 0;
 		font-size: 1rem;
-	}
-	.code {
-		font-family: monospace;
-		letter-spacing: 0.06em;
-		background: #eef2f9;
-		padding: 0.15rem 0.5rem;
-		border-radius: 6px;
-	}
-	.cg-card .saved {
-		color: #059669;
-		font-weight: 600;
 	}
 </style>

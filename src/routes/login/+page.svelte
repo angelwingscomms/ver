@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ChatgptConnect from '$lib/components/chatgpt_connect.svelte';
+
 	let mode = $state<'login' | 'register'>('login');
 	let email = $state('');
 	let password = $state('');
@@ -30,6 +32,7 @@
 	<h1>{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
 	<a class="google" href="/login/google">Continue with Google</a>
 	<div class="sep">or</div>
+	<ChatgptConnect />
 	<form onsubmit={(e) => { e.preventDefault(); submit(); }}>
 		<input type="email" placeholder="Email" bind:value={email} autocomplete="email" />
 		<input type="password" placeholder="Password" bind:value={password} autocomplete="current-password" />
