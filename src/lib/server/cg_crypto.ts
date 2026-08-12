@@ -1,5 +1,3 @@
-import { type SecretVal, get_secret } from './qdrant';
-
 export type ChatGptTokens = {
 	accessToken: string;
 	refreshToken?: string;

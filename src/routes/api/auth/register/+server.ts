@@ -10,7 +10,12 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const p = body?.p ?? '';
 	if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw error(400, 'valid email required');
 	if (p.length < 8) throw error(400, 'password must be at least 8 characters');
-	await create_pw_user({ QDRANT_URL: env.QDRANT_URL, QDRANT_KEY: env.QDRANT_KEY }, e, p);
+	const created = await create_pw_user(
+		{ QDRANT_URL: env.QDRANT_URL, QDRANT_KEY: env.QDRANT_KEY },
+		e,
+		p
+	);
+	if (!created) throw error(409, 'an account with that email already exists');
 	const session = await encode_session({ id: e, name: e, email: e });
 	cookies.set('session', session, { path: '/', httpOnly: true, maxAge: 604800, sameSite: 'lax' });
 	return json({ ok: true });

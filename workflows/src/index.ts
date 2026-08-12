@@ -140,10 +140,13 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 		const token_rate = Number(this.env.TOKEN_RATE) || 1.08;
 		const ngn_usd = Number(this.env.NGN_USD) || 1440;
 		let cg_tokens: ChatGptTokens | undefined;
+		let cg_model = CHATGPT_MODEL;
 		if (event.payload.cg && u) {
 			const rec = await get_user(this.env, u);
-			if (rec?.cg && this.env.LWC_KEY)
+			if (rec?.cg && this.env.LWC_KEY) {
 				cg_tokens = await decrypt_chatgpt_secret<ChatGptTokens>(this.env.LWC_KEY, rec.cg);
+				if (rec.cgl?.length && !rec.cgl.includes(cg_model)) cg_model = rec.cgl[0];
+			}
 		}
 		const use_codex = !!cg_tokens;
 		const get_auth = cg_tokens
@@ -180,7 +183,7 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 						key,
 						messages,
 						use_codex ? 'codex' : 'openrouter',
-						use_codex ? CHATGPT_MODEL : MODEL,
+						use_codex ? cg_model : MODEL,
 						force_finish,
 						use_codex ? { get_auth } : undefined
 					);
@@ -284,7 +287,7 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			/* steps-used persistence best-effort */
 		}
 		const total_cost = llm_cost + search_cost;
-		const llm_label = use_codex ? `ChatGPT ${CHATGPT_MODEL} (your plan)` : `OpenRouter ${MODEL}`;
+		const llm_label = use_codex ? `ChatGPT ${cg_model} (your plan)` : `OpenRouter ${MODEL}`;
 		const cost_block =
 			`\n\n---\n\n# research cost\n\n` +
 			`- **LLM cost** (${llm_label}): ${fmt_usd(llm_cost)}\n` +

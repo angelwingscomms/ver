@@ -6,92 +6,92 @@ import {
 	parseUser,
 	listCodexModels
 } from '@opencoredev/loginwithchatgpt-core';
-import { get_user, set_user_fields, type UEnv } from './user';
+import { get_user, save_user, set_user_fields, type UEnv } from './user';
 import {
 	encrypt_chatgpt_secret,
 	decrypt_chatgpt_secret,
 	type ChatGptPending,
 	type ChatGptTokens
 } from './cg_crypto';
-import type { SecretVal } from './qdrant';
+import { get_secret } from './qdrant';
 
-export type CgEnv = {
-	QDRANT_URL: SecretVal;
-	QDRANT_KEY: SecretVal;
-	LWC_KEY?: SecretVal;
-};
+export type CgEnv = UEnv;
 
-async function key_of(env: CgEnv): Promise<string> {
-	const v = env.LWC_KEY;
-	return v && typeof (v as { get?: unknown }).get === 'function'
-		? await (v as { get: () => Promise<string> }).get()
-		: ((v as string) ?? '');
-}
+export const CG_COOKIE = 'cg_pending';
+export const CG_COOKIE_MAX_AGE = 900;
 
-export async function start_chatgpt_login(env: CgEnv, userId: string) {
-	const config = resolveConfig();
-	const device = await requestDeviceCode(config);
-	const pending: ChatGptPending = { i: device.deviceAuthId, c: device.userCode, e: device.expiresAt };
-	await set_user_fields(env as UEnv, userId, {
-		cgp: await encrypt_chatgpt_secret(await key_of(env), pending)
-	});
+export type CgPoll =
+	| { status: 'pending' }
+	| { status: 'expired' }
+	| { status: 'authenticated'; id: string; n?: string; m?: string; models: string[] };
+
+export async function start_chatgpt_login(env: CgEnv) {
+	const device = await requestDeviceCode(resolveConfig());
+	const pending: ChatGptPending = {
+		i: device.deviceAuthId,
+		c: device.userCode,
+		e: device.expiresAt
+	};
 	return {
-		user_code: device.userCode,
-		verification_url: device.verificationUrl,
-		interval: device.interval,
-		expires_at: device.expiresAt
+		pending: await encrypt_chatgpt_secret(await get_secret(env.LWC_KEY), pending),
+		body: {
+			user_code: device.userCode,
+			verification_url: device.verificationUrl,
+			interval: device.interval,
+			expires_at: device.expiresAt
+		}
 	};
 }
 
-export async function poll_chatgpt_login(env: CgEnv, userId: string) {
-	const u = await get_user(env as UEnv, userId);
-	if (!u?.cgp) return { status: 'pending' };
-	const pending = await decrypt_chatgpt_secret<ChatGptPending>(await key_of(env), u.cgp);
-	if (Date.now() > pending.e) {
-		await set_user_fields(env as UEnv, userId, { cgp: undefined });
+export async function poll_chatgpt_login(
+	env: CgEnv,
+	cookie: string | undefined,
+	user_id?: string
+): Promise<CgPoll> {
+	if (!cookie) return { status: 'expired' };
+	const key = await get_secret(env.LWC_KEY);
+	let pending: ChatGptPending;
+	try {
+		pending = await decrypt_chatgpt_secret<ChatGptPending>(key, cookie);
+	} catch {
 		return { status: 'expired' };
 	}
+	if (Date.now() > pending.e) return { status: 'expired' };
+
 	const config = resolveConfig();
-	const poll = await pollDeviceCode(config, {
-		deviceAuthId: pending.i,
-		userCode: pending.c
-	});
+	const poll = await pollDeviceCode(config, { deviceAuthId: pending.i, userCode: pending.c });
 	if (poll.status === 'pending') return { status: 'pending' };
+
 	const tokens = await exchangeDeviceAuthorization(config, poll);
 	const profile = parseUser(tokens.idToken);
-	const models = await listCodexModels({
-		config,
-		getAuth: () => ({ accessToken: tokens.accessToken, accountId: tokens.accountId! })
-	}).catch(() => []);
-	await set_user_fields(env as UEnv, userId, {
-		cg: await encrypt_chatgpt_secret(await key_of(env), tokens),
-		cgp: undefined,
+	const id = user_id ?? profile?.email ?? profile?.accountId;
+	if (!id) throw new Error('chatgpt account returned no email or account id');
+
+	const models = tokens.accountId
+		? await listCodexModels({
+				config,
+				getAuth: () => ({ accessToken: tokens.accessToken, accountId: tokens.accountId! })
+			}).catch(() => [])
+		: [];
+
+	if (!user_id) await save_user(env, id, profile?.name ?? id, undefined, profile?.email, 'chatgpt');
+	await set_user_fields(env, id, {
+		cg: await encrypt_chatgpt_secret(key, tokens),
 		cgn: profile?.name,
 		cgm: profile?.email,
 		cgl: models
 	});
-	return {
-		status: 'authenticated',
-		n: profile?.name,
-		m: profile?.email,
-		models
-	};
+	return { status: 'authenticated', id, n: profile?.name, m: profile?.email, models };
 }
 
 export async function chatgpt_status(env: CgEnv, userId: string) {
-	const u = await get_user(env as UEnv, userId);
-	return {
-		connected: !!u?.cg,
-		n: u?.cgn,
-		m: u?.cgm,
-		models: u?.cgl ?? []
-	};
+	const u = await get_user(env, userId);
+	return { connected: !!u?.cg, n: u?.cgn, m: u?.cgm, models: u?.cgl ?? [] };
 }
 
 export async function disconnect_chatgpt(env: CgEnv, userId: string) {
-	await set_user_fields(env as UEnv, userId, {
+	await set_user_fields(env, userId, {
 		cg: undefined,
-		cgp: undefined,
 		cgn: undefined,
 		cgm: undefined,
 		cgl: undefined

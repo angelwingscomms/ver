@@ -1,14 +1,20 @@
 <script lang="ts">
-	let st = $state<'load' | 'idle' | 'adding' | 'waiting' | 'connected' | 'noauth' | 'error'>('load');
+	let { label = 'continue with chatgpt' }: { label?: string } = $props();
+
+	type St = 'load' | 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
+	let st = $state<St>('load');
 	let code = $state('');
 	let url = $state('');
-	let interval = $state(5);
 	let email = $state('');
 	let name = $state('');
 	let err = $state('');
-	let timer = $state<ReturnType<typeof setInterval> | null>(null);
+	let copied = $state(false);
+	let timer: ReturnType<typeof setInterval> | null = null;
 
-	refresh();
+	$effect(() => {
+		refresh();
+		return stop;
+	});
 
 	async function refresh() {
 		try {
@@ -26,65 +32,78 @@
 	}
 
 	function stop() {
-		if (timer) {
-			clearInterval(timer);
-			timer = null;
+		if (timer) clearInterval(timer);
+		timer = null;
+	}
+
+	async function copy() {
+		try {
+			await navigator.clipboard.writeText(code);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			copied = false;
 		}
 	}
 
 	async function connect() {
+		if (st === 'starting' || st === 'waiting') return;
 		err = '';
-		if (st === 'waiting' || st === 'adding') return;
-		const popup = window.open('', 'ver-chatgpt-login', 'popup,width=520,height=720');
-		st = 'adding';
+		const popup = window.open('', 'ver-chatgpt-login', 'popup,width=520,height=760');
+		st = 'starting';
 		try {
 			const r = await fetch('/api/chatgpt/login', { method: 'POST' });
-			if (r.status === 401) {
-				st = 'noauth';
-				if (popup) popup.close();
-				return;
-			}
-			if (!r.ok) throw new Error(`login ${r.status}`);
 			const j = (await r.json()) as {
-				user_code: string;
-				verification_url: string;
-				interval: number;
+				user_code?: string;
+				verification_url?: string;
+				interval?: number;
+				message?: string;
 			};
+			if (!r.ok || !j.user_code || !j.verification_url)
+				throw new Error(j.message ?? `login ${r.status}`);
 			code = j.user_code;
 			url = j.verification_url;
-			interval = Math.max(j.interval, 3);
-			await navigator.clipboard.writeText(code);
 			st = 'waiting';
+			copy();
 			if (popup) popup.location.href = url;
+			else window.open(url, '_blank', 'noopener');
 			stop();
-			timer = setInterval(poll, interval * 1000);
+			timer = setInterval(poll, Math.max(j.interval ?? 5, 3) * 1000);
 		} catch (e) {
 			st = 'error';
-			err = String(e);
+			err = (e as Error).message;
 			if (popup) popup.close();
 		}
 	}
 
 	async function poll() {
 		try {
-			const j = (await (await fetch('/api/chatgpt/poll', { method: 'POST' })).json()) as {
-				status: string;
-				m?: string;
-				n?: string;
-			};
+			const r = await fetch('/api/chatgpt/poll', { method: 'POST' });
+			const j = (await r.json()) as { status?: string; n?: string; m?: string; r?: string | null };
+			if (!r.ok) return;
 			if (j.status === 'authenticated') {
 				stop();
+				if (j.r) {
+					location.href = j.r;
+					return;
+				}
 				st = 'connected';
 				email = j.m ?? '';
 				name = j.n ?? '';
 			} else if (j.status === 'expired') {
 				stop();
 				st = 'error';
-				err = 'code expired, try again';
+				err = 'that code expired, try again';
 			}
 		} catch {
-			/* poll best-effort, next tick retries */
+			/* best-effort, next tick retries */
 		}
+	}
+
+	function cancel() {
+		stop();
+		st = 'idle';
+		code = '';
 	}
 
 	async function disconnect() {
@@ -100,29 +119,51 @@
 <div class="cg">
 	{#if st === 'connected'}
 		<p class="ok">connected{name ? ` as ${name}` : ''}{email ? ` (${email})` : ''}</p>
-		<button type="button" onclick={disconnect}>disconnect</button>
+		<button type="button" class="link" onclick={disconnect}>disconnect</button>
 	{:else if st === 'waiting'}
-		<p class="wait">open chatgpt and enter code <b class="code">{code}</b></p>
+		<p class="wait">enter this code in the chatgpt window</p>
+		<button type="button" class="code" onclick={copy}>{code}</button>
 		<p class="hint">
-			<a href={url} target="_blank" rel="noopener">open {url}</a> — code copied to clipboard
+			{copied ? 'copied to clipboard' : 'click the code to copy'} —
+			<button type="button" class="link" onclick={() => window.open(url, '_blank', 'noopener')}>
+				open chatgpt
+			</button>
 		</p>
-	{:else if st === 'noauth'}
-		<p class="hint">sign in first, then connect chatgpt here</p>
+		<button type="button" class="link" onclick={cancel}>cancel</button>
 	{:else}
-		<button type="button" disabled={st === 'adding' || st === 'load'} onclick={connect}>
-			{st === 'adding' ? 'connecting…' : st === 'load' ? 'loading…' : 'login with chatgpt'}
+		<button
+			type="button"
+			class="go"
+			disabled={st === 'starting' || st === 'load'}
+			onclick={connect}
+		>
+			{st === 'starting' ? 'starting…' : label}
 		</button>
-		{#if st === 'error'}
-			<p class="err">{err}</p>
-		{/if}
+		{#if st === 'error'}<p class="err">{err}</p>{/if}
 	{/if}
 </div>
 
 <style>
 	.cg {
 		display: grid;
-		gap: 0.8rem;
-		justify-items: start;
+		gap: 0.6rem;
+		justify-items: center;
+		text-align: center;
+	}
+	.go {
+		width: 100%;
+		padding: 0.8rem;
+		border: 1px solid #dbe3f0;
+		border-radius: 9px;
+		background: #fff;
+		color: #16233f;
+		font-weight: 600;
+		font-size: 1rem;
+		cursor: pointer;
+	}
+	.go:disabled {
+		opacity: 0.6;
+		cursor: default;
 	}
 	.ok {
 		color: #059669;
@@ -132,18 +173,31 @@
 	.wait {
 		margin: 0;
 		font-size: 0.95rem;
+		color: #16233f;
 	}
 	.code {
 		font-family: monospace;
-		letter-spacing: 0.06em;
+		font-size: 1.35rem;
+		letter-spacing: 0.14em;
 		background: #eef2f9;
-		padding: 0.15rem 0.5rem;
-		border-radius: 6px;
+		border: 1px solid #dbe3f0;
+		border-radius: 8px;
+		padding: 0.45rem 0.9rem;
+		color: #16233f;
+		cursor: pointer;
 	}
 	.hint {
-		font-size: 0.88rem;
+		font-size: 0.85rem;
 		color: #64748b;
 		margin: 0;
+	}
+	.link {
+		background: none;
+		border: none;
+		color: #1d4ed8;
+		font-size: 0.85rem;
+		cursor: pointer;
+		padding: 0;
 	}
 	.err {
 		font-size: 0.82rem;

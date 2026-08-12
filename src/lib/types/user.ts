@@ -4,10 +4,9 @@ export interface User {
 	p?: string;
 	m?: string;
 	d: number;
-	o?: 'google' | 'local';
+	o?: 'google' | 'local' | 'chatgpt';
 	h?: string;
 	cg?: string;
-	cgp?: string;
 	cgn?: string;
 	cgm?: string;
 	cgl?: string[];

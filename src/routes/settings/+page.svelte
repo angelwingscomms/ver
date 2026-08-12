@@ -172,7 +172,7 @@
 			Connect a ChatGPT account so API deep research runs on that plan. Usage counts against
 			the connected ChatGPT account, not your Ver token balance.
 		</p>
-		<ChatgptConnect />
+		<ChatgptConnect label="connect chatgpt" />
 	</section>
 
 	{#if provider === 'openrouter'}
