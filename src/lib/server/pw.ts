@@ -1,4 +1,4 @@
-const ITER = 120_000;
+const ITER = 60_000;
 
 function b64u(buf: ArrayBuffer | Uint8Array): string {
 	const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
