@@ -86,18 +86,11 @@ export async function poll_chatgpt_login(
 	return { status: 'authenticated', id, n: profile?.name, m: profile?.email, models };
 }
 
-export async function chatgpt_status(env: CgEnv, userId: string) {
-	const u = await get_user(env, userId);
-	return { connected: !!u?.cg, n: u?.cgn, m: u?.cgm, models: u?.cgl ?? [] };
-}
-
-export async function codex_call(env: CgEnv, userId: string, body: string): Promise<Response> {
-	const u = await get_user(env, userId);
-	if (!u?.cg) throw new Error('no chatgpt account connected');
+async function auth_getter(env: CgEnv, userId: string, cg: string) {
 	const key = await get_secret(env.LWC_KEY);
-	let tokens = await decrypt_chatgpt_secret<ChatGptTokens>(key, u.cg);
+	let tokens = await decrypt_chatgpt_secret<ChatGptTokens>(key, cg);
 	const config = resolveConfig();
-	const codex_fetch = createCodexFetch({
+	return {
 		config,
 		getAuth: async () => {
 			tokens = await ensureFreshTokens(config, tokens, {
@@ -108,7 +101,26 @@ export async function codex_call(env: CgEnv, userId: string, body: string): Prom
 			});
 			return { accessToken: tokens.accessToken, accountId: tokens.accountId! };
 		}
-	});
+	};
+}
+
+export async function chatgpt_status(env: CgEnv, userId: string) {
+	const u = await get_user(env, userId);
+	if (!u?.cg) return { connected: false, models: [] as string[] };
+	let models = u.cgl ?? [];
+	if (!models.length) {
+		const { config, getAuth } = await auth_getter(env, userId, u.cg);
+		models = await listCodexModels({ config, getAuth }).catch(() => [] as string[]);
+		if (models.length) await set_user_fields(env, userId, { cgl: models });
+	}
+	return { connected: true, n: u.cgn, m: u.cgm, models };
+}
+
+export async function codex_call(env: CgEnv, userId: string, body: string): Promise<Response> {
+	const u = await get_user(env, userId);
+	if (!u?.cg) throw new Error('no chatgpt account connected');
+	const { config, getAuth } = await auth_getter(env, userId, u.cg);
+	const codex_fetch = createCodexFetch({ config, getAuth });
 	return codex_fetch(`${config.codexBaseUrl}/responses`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
