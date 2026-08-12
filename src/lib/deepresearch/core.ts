@@ -82,6 +82,10 @@ export async function withRetry<T>(
 			const re: RetryError = { message: errMsg, turn, attempt, timestamp: Date.now(), detail };
 			onError(re);
 			console.error(`[retry ${context}] turn ${turn} attempt ${attempt}/${maxRetries} failed:`, e);
+			if (/quota/i.test(errMsg)) {
+				console.error(`[retry ${context}] quota error, not retrying`);
+				return undefined;
+			}
 			if (attempt < maxRetries) {
 				const delay = Math.min(1000 * Math.pow(2, attempt), 30_000);
 				console.log(`[retry ${context}] retrying in ${delay}ms…`);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { slug, search_bible, call_llm, MODEL } from './core';
+import { slug, search_bible, call_llm, MODEL, withRetry } from './core';
 
 vi.mock('ai', () => ({
 	generateText: vi.fn(),
@@ -215,5 +215,41 @@ describe('call_llm', () => {
 				}
 			]
 		});
+	});
+});
+
+describe('withRetry', () => {
+	it('gives up immediately on quota errors', async () => {
+		const onError = vi.fn();
+		const r = await withRetry(
+			async () => {
+				throw new Error('You exceeded your current quota, please check your plan');
+			},
+			9,
+			onError,
+			1,
+			'llm'
+		);
+		expect(r).toBeUndefined();
+		expect(onError).toHaveBeenCalledTimes(1);
+	});
+
+	it('retries non-quota errors up to success', async () => {
+		const onError = vi.fn();
+		let calls = 0;
+		const r = await withRetry(
+			async () => {
+				calls++;
+				if (calls < 3) throw new Error('boom');
+				return 'ok';
+			},
+			9,
+			onError,
+			1,
+			'llm'
+		);
+		expect(r).toBe('ok');
+		expect(onError).toHaveBeenCalledTimes(2);
+		expect(calls).toBe(3);
 	});
 });
