@@ -44,6 +44,7 @@
 	"dependencies": {
 		"@ai-sdk/google": "^4.0.24",
 		"@ai-sdk/openai": "^4.0.20",
+		"@opencoredev/loginwithchatgpt-core": "^0.2.0",
 		"@paystack/inline-js": "^2.23.1",
 		"@qdrant/js-client-rest": "^1.18.0",
 		"ai": "^7.0.37",

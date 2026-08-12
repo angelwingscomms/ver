@@ -15,7 +15,9 @@
 
 	$effect(() => {
 		if (!browser) return;
-		loadKey().then((k) => (hasKey = !!k));
+		Promise.all([loadKey(), loadSetting('provider'), loadSetting('gemini_key')]).then(
+			([ok, p, gk]) => (hasKey = p === 'gemini' ? !!gk : !!ok)
+		);
 		load();
 	});
 

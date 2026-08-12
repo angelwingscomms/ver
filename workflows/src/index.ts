@@ -9,6 +9,7 @@ import {
 	FREE_STEPS,
 	SYSTEM_PROMPT,
 	MODEL,
+	CHATGPT_MODEL,
 	EMBEDDING_MODEL,
 	EMBEDDING_PRICE,
 	call_llm,
@@ -17,6 +18,13 @@ import {
 } from '../../src/lib/deepresearch/core';
 import { calc_cost, kobo } from '../../src/lib/server/pricing';
 import { deduct, get_balance } from '../../src/lib/server/token_balance';
+import { get_user, set_user_fields } from '../../src/lib/server/user';
+import {
+	decrypt_chatgpt_secret,
+	encrypt_chatgpt_secret,
+	type ChatGptTokens
+} from '../../src/lib/server/cg_crypto';
+import { resolveConfig, ensureFreshTokens } from '@opencoredev/loginwithchatgpt-core';
 import type { WfClient } from '../../src/lib/server/dr';
 
 type T = {
@@ -31,6 +39,7 @@ type E = {
 	OPENROUTER_KEY: { get(): Promise<string> };
 	QDRANT_URL: { get(): Promise<string> };
 	QDRANT_KEY: { get(): Promise<string> };
+	LWC_KEY?: string;
 	TOKEN_RATE?: string;
 	NGN_USD?: string;
 	DR_LOG: DurableObjectNamespace;
@@ -40,7 +49,7 @@ type E = {
 };
 
 type R = { i: string; q: string; l: string; c: number; s?: string; n?: number };
-type P = { q: string; l: string; u: string; b: number; n?: number };
+type P = { q: string; l: string; u: string; b: number; n?: number; cg?: boolean };
 
 function check_auth(req: Request, env: E): Response | null {
 	if (req.headers.get('authorization') !== `Bearer ${env.INTERNAL_TOKEN}`)
@@ -130,6 +139,28 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 		const key = await this.env.OPENROUTER_KEY.get();
 		const token_rate = Number(this.env.TOKEN_RATE) || 1.08;
 		const ngn_usd = Number(this.env.NGN_USD) || 1440;
+		let cg_tokens: ChatGptTokens | undefined;
+		if (event.payload.cg && u) {
+			const rec = await get_user(this.env, u);
+			if (rec?.cg && this.env.LWC_KEY)
+				cg_tokens = await decrypt_chatgpt_secret<ChatGptTokens>(this.env.LWC_KEY, rec.cg);
+		}
+		const use_codex = !!cg_tokens;
+		const get_auth = cg_tokens
+			? async () => {
+					const config = resolveConfig();
+					cg_tokens = await ensureFreshTokens(config, cg_tokens, {
+						onRefresh: async (t) => {
+							cg_tokens = t;
+							if (this.env.LWC_KEY)
+								await set_user_fields(this.env, u, {
+									cg: await encrypt_chatgpt_secret(this.env.LWC_KEY, t)
+								});
+						}
+					});
+					return { accessToken: cg_tokens!.accessToken, accountId: cg_tokens!.accountId! };
+				}
+			: undefined;
 		const messages: Msg[] = [
 			{ role: 'system', content: SYSTEM_PROMPT },
 			{ role: 'user', content: q }
@@ -143,16 +174,38 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			used = t + 1;
 			const force_finish = t === steps - 1 || (b > 0 && billable >= b);
 			const { message: m, usage } = await step.do(`llm-${t}`, RETRY, async () => {
-				const resp = await call_llm(key, messages, 'openrouter', MODEL, force_finish);
-				const step_cost = usage?.total_cost ?? (usage
-					? calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, usage.prompt_tokens_details?.cached_tokens ?? 0)
-					: 0);
+				let resp;
+				try {
+					resp = await call_llm(
+						key,
+						messages,
+						use_codex ? 'codex' : 'openrouter',
+						use_codex ? CHATGPT_MODEL : MODEL,
+						force_finish,
+						use_codex ? { get_auth } : undefined
+					);
+				} catch (e) {
+					if (!use_codex) throw e;
+					console.warn(`[chatgpt] turn ${t} codex failed, falling back to openrouter:`, e);
+					resp = await call_llm(key, messages, 'openrouter', MODEL, force_finish);
+				}
+				const step_cost = use_codex
+					? 0
+					: resp.usage?.total_cost ??
+						(resp.usage
+							? calc_cost(
+									MODEL,
+									resp.usage.prompt_tokens,
+									resp.usage.completion_tokens,
+									resp.usage.prompt_tokens_details?.cached_tokens ?? 0
+								)
+							: 0);
 				if (step_cost > 0) llm_cost += step_cost;
 				for (const th of thoughts_from_msg(resp.message))
 					await log_think(this.env, l, `llm-${t}-${th.k}`, th.k, t, th.c, step_cost, 'llm');
 				return resp;
 			});
-			if (usage && t >= FREE_STEPS) {
+			if (usage && !use_codex && t >= FREE_STEPS) {
 				const cache = usage.prompt_tokens_details?.cached_tokens ?? 0;
 				billable += kobo(
 					calc_cost(MODEL, usage.prompt_tokens, usage.completion_tokens, cache),
@@ -213,7 +266,7 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 				'No answer produced.';
 		const spent = Math.min(billable, b);
 		let bal = 0;
-		if (u) {
+		if (u && !use_codex) {
 			try {
 				bal = spent > 0 ? await deduct(this.env, u, spent) : await get_balance(this.env, u);
 			} catch {
@@ -231,9 +284,10 @@ export class DeepResearchWorkflow extends WorkflowEntrypoint<E, P> {
 			/* steps-used persistence best-effort */
 		}
 		const total_cost = llm_cost + search_cost;
+		const llm_label = use_codex ? `ChatGPT ${CHATGPT_MODEL} (your plan)` : `OpenRouter ${MODEL}`;
 		const cost_block =
 			`\n\n---\n\n# research cost\n\n` +
-			`- **LLM cost** (OpenRouter ${MODEL}): ${fmt_usd(llm_cost)}\n` +
+			`- **LLM cost** (${llm_label}): ${fmt_usd(llm_cost)}\n` +
 			`- **Search cost** (embeddings ${EMBEDDING_MODEL}): ${fmt_usd(search_cost)}\n` +
 			`- **Total research cost**: ${fmt_usd(total_cost)}\n`;
 		return {
@@ -297,15 +351,16 @@ export default {
 			});
 		}
 		if (req.method === 'POST' && u.pathname === '/create') {
-			const { q, l, u, b, n } = (await req.json()) as {
+			const { q, l, u, b, n, cg } = (await req.json()) as {
 				q: string;
 				l: string;
 				u?: string;
 				b?: number;
 				n?: number;
+				cg?: boolean;
 			};
 			const inst = await env.DEEPRESEARCH_WF.create({
-				params: { q, l, u: u ?? '', b: b ?? 0, n: n ?? FREE_STEPS }
+				params: { q, l, u: u ?? '', b: b ?? 0, n: n ?? FREE_STEPS, cg: cg ?? false }
 			});
 			const idx = env.DR_INDEX.idFromName('index');
 			await env.DR_INDEX.get(idx).fetch('https://do/add', {

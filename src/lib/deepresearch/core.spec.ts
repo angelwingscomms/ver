@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { slug, search_bible, call_llm, MODEL } from './core';
 
 vi.mock('ai', () => ({
-	generateText: vi.fn()
+	generateText: vi.fn(),
+	streamText: vi.fn()
 }));
 vi.mock('@ai-sdk/openai', () => ({
 	createOpenAI: vi.fn(() => vi.fn(() => 'openrouter-model'))
@@ -11,7 +12,7 @@ vi.mock('@ai-sdk/google', () => ({
 	createGoogleGenerativeAI: vi.fn(() => vi.fn(() => 'gemini-model'))
 }));
 
-const { generateText } = vi.mocked(await import('ai'));
+const { generateText, streamText } = vi.mocked(await import('ai'));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -128,5 +129,39 @@ describe('call_llm', () => {
 		});
 		const r = await call_llm('gk', [{ role: 'user', content: 'q' }], 'gemini', 'gemini-2.0-flash');
 		expect(r.message.content).toBe('gemini reply');
+	});
+
+	it('uses streamText for the codex provider and omits temperature', async () => {
+		streamText.mockResolvedValue({
+			text: Promise.resolve('codex answer'),
+			toolCalls: Promise.resolve([]),
+			usage: Promise.resolve({ inputTokens: 4, outputTokens: 7, inputTokenDetails: {} })
+		});
+		const r = await call_llm(
+			'ignored',
+			[{ role: 'system', content: 'sys' }, { role: 'user', content: 'q' }],
+			'codex',
+			'gpt-5.5',
+			false,
+			{ get_auth: async () => ({ accessToken: 'at', accountId: 'aid' }) }
+		);
+		expect(r.message.content).toBe('codex answer');
+		expect(r.usage?.prompt_tokens).toBe(4);
+		const opts = streamText.mock.calls[0][0];
+		expect(opts.system).toBe('sys');
+		expect(opts.temperature).toBeUndefined();
+		expect(streamText).toHaveBeenCalledTimes(1);
+	});
+
+	it('passes temperature for openrouter', async () => {
+		generateText.mockResolvedValue({
+			text: 'hi',
+			toolCalls: [],
+			usage: { inputTokens: 1, outputTokens: 1, inputTokenDetails: {} },
+			finishReason: 'stop',
+			response: { messages: [] }
+		});
+		await call_llm('k', [{ role: 'user', content: 'q' }]);
+		expect(generateText.mock.calls[0][0].temperature).toBe(0.6);
 	});
 });

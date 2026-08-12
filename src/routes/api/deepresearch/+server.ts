@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { get_balance } from '$lib/server/token_balance';
+import { get_user } from '$lib/server/user';
 import { wf, create_instance, type DrEnv } from '$lib/server/dr';
 import { FREE_SEARCHES } from '$lib/deepresearch/core';
 
@@ -10,7 +11,9 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 	if (!locals.user?.id) return json({ error: 'Unauthorized' }, { status: 401 });
 	const env = platform!.env as DrEnv;
 	const steps = Math.max(1, Math.floor(Number(n) || FREE_SEARCHES));
-	const paid = steps > FREE_SEARCHES;
+	const user = await get_user(env, locals.user.id);
+	const cg = !!user?.cg;
+	const paid = steps > FREE_SEARCHES && !cg;
 	let budget = 0;
 	if (paid) {
 		const bal = await get_balance(env, locals.user.id);
@@ -27,7 +30,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 			l,
 			u: locals.user!.id,
 			b: budget,
-			n: steps
+			n: steps,
+			cg
 		});
 	} catch (e) {
 		throw error(502, `failed to start workflow: ${String((e as Error).message)}`);

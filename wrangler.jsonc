@@ -53,7 +53,8 @@
 		"TOKEN_RATE": "1.08",
 		"NGN_USD": "1440",
 		"MIN_START_KOBO": "5000",
-		"MAX_PER_RESEARCH_KOBO": "200000"
+		"MAX_PER_RESEARCH_KOBO": "200000",
+		"LWC_KEY": "e890eacc5fc1f7c0164c93d170d500667ba630ac56cd29af4a98d532a30d9039"
 	},
 	"workflows": [
 		{

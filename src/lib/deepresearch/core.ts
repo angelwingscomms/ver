@@ -1,10 +1,11 @@
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
 
 export const MODEL = 'deepseek/deepseek-v4-flash';
 export const GEMINI_MODEL = 'gemini-2.0-flash';
+export const CHATGPT_MODEL = 'gpt-5.5';
 export const EMBEDDING_MODEL = 'qwen/qwen3-embedding-8b';
 export const FREE_SEARCHES = 54;
 export const FREE_STEPS = FREE_SEARCHES;
@@ -158,12 +159,24 @@ export async function call_llm(
 	messages: Msg[],
 	provider = 'openrouter',
 	model = MODEL,
-	forceFinish = false
+	forceFinish = false,
+	codex?: { get_auth: () => Promise<{ accessToken: string; accountId: string }> | { accessToken: string; accountId: string } }
 ): Promise<LlmResp> {
 	let modelInstance;
+	let streamMode = false;
 	if (provider === 'gemini') {
 		const google = createGoogleGenerativeAI({ apiKey: key });
 		modelInstance = google(model);
+	} else if (provider === 'codex') {
+		const { createCodexFetch, resolveConfig } = await import('@opencoredev/loginwithchatgpt-core');
+		const config = resolveConfig();
+		const openai = createOpenAI({
+			apiKey: 'login-with-chatgpt',
+			baseURL: config.codexBaseUrl,
+			fetch: createCodexFetch({ config, getAuth: codex!.get_auth })
+		});
+		modelInstance = openai(model);
+		streamMode = true;
 	} else {
 		const openrouter = createOpenAI({
 			apiKey: key,
@@ -172,13 +185,30 @@ export async function call_llm(
 		modelInstance = openrouter(model);
 	}
 
-	const result = await (generateText as any)({
+	const sysMsg = messages.find((m) => m.role === 'system');
+	const system = sysMsg?.content ?? undefined;
+	const msgs = system ? messages.filter((m) => m !== sysMsg) : messages;
+
+	const options = {
 		model: modelInstance,
-		messages,
+		system,
+		messages: msgs,
 		tools: forceFinish ? { finish: finishTool } : { search_bible: searchTool, finish: finishTool },
 		toolChoice: forceFinish ? { type: 'tool', toolName: 'finish' } : 'auto',
-		temperature: 0.6
-	});
+		...(provider === 'codex' ? {} : { temperature: 0.6 })
+	};
+
+	let result;
+	if (streamMode) {
+		const s = await (streamText as any)(options);
+		result = {
+			text: await s.text,
+			toolCalls: await s.toolCalls,
+			usage: s.usage ? await s.usage : undefined
+		};
+	} else {
+		result = await (generateText as any)(options);
+	}
 
 	return {
 		message: {

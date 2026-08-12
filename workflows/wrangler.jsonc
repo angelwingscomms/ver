@@ -37,6 +37,7 @@
 	"vars": {
 		"INTERNAL_TOKEN": "7ee4a3f8c1307c5dac8a84d27ecf9c4a8f836ec3823f28f82ab9c1b4196466d4",
 		"TOKEN_RATE": "1.08",
-		"NGN_USD": "1440"
+		"NGN_USD": "1440",
+		"LWC_KEY": "e890eacc5fc1f7c0164c93d170d500667ba630ac56cd29af4a98d532a30d9039"
 	}
 }
