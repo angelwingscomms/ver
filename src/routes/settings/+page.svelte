@@ -31,6 +31,7 @@
 
 	$effect(() => {
 		if (!browser) return;
+		void provider;
 		loadModels();
 	});
 
