@@ -109,8 +109,9 @@ export async function chatgpt_status(env: CgEnv, userId: string) {
 	if (!u?.cg) return { connected: false, models: [] as string[] };
 	let models = u.cgl ?? [];
 	if (!models.length) {
-		const { config, getAuth } = await auth_getter(env, userId, u.cg);
-		models = await listCodexModels({ config, getAuth }).catch(() => [] as string[]);
+		models = await auth_getter(env, userId, u.cg)
+			.then(listCodexModels)
+			.catch(() => [] as string[]);
 		if (models.length) await set_user_fields(env, userId, { cgl: models });
 	}
 	return { connected: true, n: u.cgn, m: u.cgm, models };

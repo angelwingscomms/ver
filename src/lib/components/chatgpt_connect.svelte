@@ -1,5 +1,6 @@
 <script lang="ts">
-	let { label = 'continue with chatgpt' }: { label?: string } = $props();
+	let { label = 'continue with chatgpt', onchange }: { label?: string; onchange?: () => void } =
+		$props();
 
 	type St = 'load' | 'idle' | 'starting' | 'waiting' | 'connected' | 'error';
 	let st = $state<St>('load');
@@ -90,6 +91,7 @@
 				st = 'connected';
 				email = j.m ?? '';
 				name = j.n ?? '';
+				onchange?.();
 			} else if (j.status === 'expired') {
 				stop();
 				st = 'error';
@@ -113,6 +115,7 @@
 		code = '';
 		email = '';
 		name = '';
+		onchange?.();
 	}
 </script>
 

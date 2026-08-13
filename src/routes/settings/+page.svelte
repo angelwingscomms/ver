@@ -180,7 +180,7 @@
 			Connect a ChatGPT account so API deep research runs on that plan. Usage counts against the
 			connected ChatGPT account, not your Ver token balance.
 		</p>
-		<ChatgptConnect label="connect chatgpt" />
+		<ChatgptConnect label="connect chatgpt" onchange={loadModels} />
 	</section>
 
 	{#if provider === 'chatgpt'}

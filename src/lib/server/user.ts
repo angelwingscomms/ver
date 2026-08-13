@@ -13,14 +13,18 @@ async function write_user(env: UEnv, id: string, u: User): Promise<void> {
 	for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
 	await (
 		await cl(env)
-	).upsert(C, { points: [{ id: await pt_id('u_' + id), vector: ZV, payload }] });
+	).upsert(C, { wait: true, points: [{ id: await pt_id('u_' + id), vector: ZV, payload }] });
+}
+
+async function read_user(env: UEnv, id: string): Promise<User | null> {
+	const r = await (await cl(env)).retrieve(C, { ids: [await pt_id('u_' + id)] });
+	const u = r[0]?.payload as unknown as User | undefined;
+	return u?.s === 'u' ? u : null;
 }
 
 export async function get_user(env: UEnv, id: string): Promise<User | null> {
 	try {
-		const r = await (await cl(env)).retrieve(C, { ids: [await pt_id('u_' + id)] });
-		const u = r[0]?.payload as unknown as User | undefined;
-		return u?.s === 'u' ? u : null;
+		return await read_user(env, id);
 	} catch {
 		return null;
 	}
@@ -74,7 +78,6 @@ export async function set_user_fields(
 	id: string,
 	fields: Partial<Pick<User, 'cg' | 'cgn' | 'cgm' | 'cgl'>>
 ): Promise<void> {
-	const c = await get_user(env, id);
-	if (!c) return;
-	await write_user(env, id, { ...c, ...fields });
+	const c = await read_user(env, id);
+	await write_user(env, id, { s: 'u', n: id, d: Date.now(), ...c, ...fields });
 }

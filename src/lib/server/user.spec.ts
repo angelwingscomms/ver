@@ -57,4 +57,20 @@ describe('user records', () => {
 		await set_user_fields(env, 'a@b.com', { cg: 'tok' });
 		expect(point().payload).toEqual({ s: 'u', n: 'a', d: 1, h: 'hash', cg: 'tok' });
 	});
+
+	it('stores fields for a signed-in account that has no record yet', async () => {
+		await set_user_fields(env, 'a@b.com', { cg: 'tok' });
+		expect(point().payload).toMatchObject({ s: 'u', n: 'a@b.com', cg: 'tok' });
+	});
+
+	it('fails loudly when the record cannot be read', async () => {
+		retrieve.mockRejectedValue(new Error('qdrant down'));
+		await expect(set_user_fields(env, 'a@b.com', { cg: 'tok' })).rejects.toThrow('qdrant down');
+		expect(upsert).not.toHaveBeenCalled();
+	});
+
+	it('waits for a write to apply so the next read sees it', async () => {
+		await save_user(env, 'a@b.com', 'a');
+		expect(upsert.mock.calls.at(-1)![1].wait).toBe(true);
+	});
 });

@@ -13,11 +13,7 @@ vi.mock('@opencoredev/loginwithchatgpt-core', () => ({
 		return codex_fetch;
 	}),
 	ensureFreshTokens: vi.fn(
-		async (
-			_c: unknown,
-			_t: unknown,
-			o: { onRefresh?: (t: typeof refreshed) => Promise<void> }
-		) => {
+		async (_c: unknown, _t: unknown, o: { onRefresh?: (t: typeof refreshed) => Promise<void> }) => {
 			await o?.onRefresh?.(refreshed);
 			return refreshed;
 		}
@@ -42,8 +38,10 @@ vi.mock('./user', () => ({
 
 let auth_of: (() => Promise<unknown>) | undefined;
 
-const { start_chatgpt_login, poll_chatgpt_login, codex_call } = await import('./cg');
+const { start_chatgpt_login, poll_chatgpt_login, codex_call, chatgpt_status } =
+	await import('./cg');
 const { get_user, save_user, set_user_fields } = vi.mocked(await import('./user'));
+const { listCodexModels } = await import('@opencoredev/loginwithchatgpt-core');
 const { decrypt_chatgpt_secret, encrypt_chatgpt_secret } = await import('./cg_crypto');
 
 const env = { QDRANT_URL: 'u', QDRANT_KEY: 'k', LWC_KEY: 'secret' };
@@ -134,5 +132,46 @@ describe('codex proxy call', () => {
 		expect(await auth_of!()).toEqual({ accessToken: 'at2', accountId: 'acc' });
 		const stored = set_user_fields.mock.calls.at(-1)![2].cg!;
 		expect(await decrypt_chatgpt_secret('secret', stored)).toEqual(refreshed);
+	});
+});
+
+describe('chatgpt status', () => {
+	it('reports the stored connection and model list', async () => {
+		get_user.mockResolvedValue({
+			s: 'u',
+			n: 'a',
+			d: 1,
+			cg: 'blob',
+			cgm: 'me@openai.com',
+			cgl: ['gpt-5.5']
+		});
+		expect(await chatgpt_status(env, 'a@b.com')).toEqual({
+			connected: true,
+			n: undefined,
+			m: 'me@openai.com',
+			models: ['gpt-5.5']
+		});
+	});
+
+	it('stays connected when the model list cannot be fetched', async () => {
+		vi.mocked(listCodexModels).mockRejectedValueOnce(new Error('403'));
+		get_user.mockResolvedValue({
+			s: 'u',
+			n: 'a',
+			d: 1,
+			cg: await encrypt_chatgpt_secret('secret', tokens)
+		});
+		expect(await chatgpt_status(env, 'a@b.com')).toMatchObject({ connected: true, models: [] });
+	});
+
+	it('fetches and caches the model list when the account has none stored', async () => {
+		get_user.mockResolvedValue({
+			s: 'u',
+			n: 'a',
+			d: 1,
+			cg: await encrypt_chatgpt_secret('secret', tokens)
+		});
+		expect((await chatgpt_status(env, 'a@b.com')).models).toEqual(['gpt-5.5']);
+		expect(set_user_fields.mock.calls.at(-1)![2]).toEqual({ cgl: ['gpt-5.5'] });
 	});
 });
